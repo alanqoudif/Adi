@@ -1,4 +1,4 @@
-"""Configuration schema for `.kai.yaml`."""
+"""Configuration schema for `.adi.yaml`."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 class LLMProviderConfig(BaseModel):
     type: str = "anthropic"  # anthropic | openai-compatible
     base_url: str | None = None
-    api_key_env: str = "KAI_LLM_API_KEY"
+    api_key_env: str = "ADI_LLM_API_KEY"
     model: str = "claude-sonnet-5-5"
 
 
@@ -21,7 +21,7 @@ class ModelRoutingConfig(BaseModel):
 
 class RuntimeConfig(BaseModel):
     type: str = "docker"  # docker | local | mock
-    image: str = "kai-kali:latest"
+    image: str = "adi-kali:latest"
     allow_local: bool = False
 
 
@@ -39,7 +39,7 @@ class AgentConfig(BaseModel):
     max_consecutive_failures: int = 5
 
 
-class KaiConfig(BaseModel):
+class AdiConfig(BaseModel):
     provider: LLMProviderConfig = Field(default_factory=LLMProviderConfig)
     models: ModelRoutingConfig = Field(default_factory=ModelRoutingConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)

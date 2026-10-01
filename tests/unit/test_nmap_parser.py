@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from kai.knowledge.observations import ObservationType
-from kai.tools.loader import load_parser
+from adi.knowledge.observations import ObservationType
+from adi.tools.loader import load_parser
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "nmap" / "scan.xml"
 SKILL_DIR = Path(__file__).resolve().parents[2] / "skills" / "nmap"

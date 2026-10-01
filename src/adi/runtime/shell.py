@@ -1,6 +1,6 @@
 """LocalRuntime: executes tools directly on the host, with no container
 isolation. This is opt-in only (`runtime.type: local` and
-`runtime.allow_local: true` in `.kai.yaml`) — the default is
+`runtime.allow_local: true` in `.adi.yaml`) — the default is
 `DockerKaliRuntime`. Useful for development on a machine that already has
 security tools installed, at the cost of losing the isolation guarantees
 Docker gives us (see docs/safety-model.md)."""
@@ -11,7 +11,7 @@ import asyncio
 import shutil
 import uuid
 
-from kai.runtime.process import ExecutionResult, ExecutionRuntime, utcnow
+from adi.runtime.process import ExecutionResult, ExecutionRuntime, utcnow
 
 
 class LocalRuntime(ExecutionRuntime):

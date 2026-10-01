@@ -1,14 +1,14 @@
 # Safety Model
 
-KAI is built for authorized security testing only: education, CTFs, labs,
+Adi is built for authorized security testing only: education, CTFs, labs,
 and systems the operator owns or is explicitly authorized to assess. Safety
 is enforced in code, not only documented.
 
-## Scope enforcement (`kai.scope.engine.ScopeEngine`)
+## Scope enforcement (`adi.scope.engine.ScopeEngine`)
 
 Every target-facing action — running a tool, sending an HTTP request,
 driving a browser — must pass through `ScopeEngine.authorize()` before
-execution. See `kai.tools.executor.ToolExecutor.run`, which authorizes and
+execution. See `adi.tools.executor.ToolExecutor.run`, which authorizes and
 logs the decision (allowed or blocked, with reason) to the action audit
 trail *before* anything is executed, including when the action is blocked.
 
@@ -30,7 +30,7 @@ dependency observation instead.
 
 ## Execution isolation
 
-`DockerKaliRuntime` (`kai.runtime.docker_runtime`) is the default. It:
+`DockerKaliRuntime` (`adi.runtime.docker_runtime`) is the default. It:
 - runs with `cap_drop=["ALL"]` and `no-new-privileges`,
 - mounts only the assessment's own `raw/` output directory, never the host
   home directory, SSH keys, browser profiles, cloud credentials, or the
@@ -39,16 +39,16 @@ dependency observation instead.
 
 `LocalRuntime` exists for development convenience only. It is opt-in: it
 requires both `runtime.type: local` **and** `runtime.allow_local: true` in
-`.kai.yaml` — the default config refuses to construct it
-(`kai.assessment.build_runtime`).
+`.adi.yaml` — the default config refuses to construct it
+(`adi.assessment.build_runtime`).
 
 All argv is executed via `asyncio.create_subprocess_exec` (no shell), so
 target strings can never inject shell metacharacters into a command line.
 
 ## Honesty about failure
 
-KAI never fabricates successful tool output. If Docker is unavailable,
-`kai doctor` and `DockerKaliRuntime.is_available()` report that plainly. If
+Adi never fabricates successful tool output. If Docker is unavailable,
+`adi doctor` and `DockerKaliRuntime.is_available()` report that plainly. If
 a tool is not installed, `ToolExecutor.run` raises `ToolExecutionError`
 rather than inventing results. Fixtures with canned tool output exist only
 under `tests/fixtures/` and are never read by production code paths.
@@ -66,4 +66,4 @@ Phase 3+ introduces the HTTP/session subsystem that resolves these).
 
 Destructive actions, persistence mechanisms, stealth/evasion techniques,
 automatic expansion of testing to hosts outside the configured scope, and
-intentional denial-of-service are not features KAI will ever implement.
+intentional denial-of-service are not features Adi will ever implement.

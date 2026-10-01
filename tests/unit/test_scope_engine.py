@@ -1,6 +1,6 @@
-from kai.actions import ActionType, PlannedAction, RiskLevel
-from kai.scope.engine import ScopeEngine
-from kai.scope.models import Permissions, Scope
+from adi.actions import ActionType, PlannedAction, RiskLevel
+from adi.scope.engine import ScopeEngine
+from adi.scope.models import Permissions, Scope
 
 
 def make_scope(**overrides) -> Scope:

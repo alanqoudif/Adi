@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from kai.tools.registry import ToolRegistry
+from adi.tools.registry import ToolRegistry
 
 SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
 

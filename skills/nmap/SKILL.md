@@ -85,4 +85,4 @@ request for port 80/443) before building further hypotheses on top of it.
 ## HOW TO STORE RESULTS IN THE TARGET GRAPH
 `open_port` / `service_banner` / `service_version` observations are folded
 automatically into typed `Host`/`Service` records by
-`kai.knowledge.workspace.Workspace._apply_observation`.
+`adi.knowledge.workspace.Workspace._apply_observation`.

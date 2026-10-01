@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import uuid
 
-from kai.runtime.process import ExecutionResult, ExecutionRuntime, utcnow
+from adi.runtime.process import ExecutionResult, ExecutionRuntime, utcnow
 
 
 class MockRuntime(ExecutionRuntime):

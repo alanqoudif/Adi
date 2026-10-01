@@ -10,13 +10,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from kai.actions import ActionType, PlannedAction, RiskLevel
-from kai.knowledge.observations import Observation, ObservationType
-from kai.knowledge.workspace import Workspace
-from kai.runtime.process import ExecutionResult, ExecutionRuntime
-from kai.scope.engine import ScopeEngine
-from kai.tools.loader import load_adapter, load_parser
-from kai.tools.registry import RegisteredTool, ToolRegistry
+from adi.actions import ActionType, PlannedAction, RiskLevel
+from adi.knowledge.observations import Observation, ObservationType
+from adi.knowledge.workspace import Workspace
+from adi.runtime.process import ExecutionResult, ExecutionRuntime
+from adi.scope.engine import ScopeEngine
+from adi.tools.loader import load_adapter, load_parser
+from adi.tools.registry import RegisteredTool, ToolRegistry
 
 
 class ToolExecutionError(RuntimeError):

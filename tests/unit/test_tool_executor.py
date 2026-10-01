@@ -2,12 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from kai.knowledge.workspace import Workspace
-from kai.runtime.mock import MockRuntime
-from kai.scope.engine import ScopeEngine
-from kai.scope.models import Scope
-from kai.tools.executor import ScopeViolationError, ToolExecutionError, ToolExecutor
-from kai.tools.registry import ToolRegistry
+from adi.knowledge.workspace import Workspace
+from adi.runtime.mock import MockRuntime
+from adi.scope.engine import ScopeEngine
+from adi.scope.models import Scope
+from adi.tools.executor import ScopeViolationError, ToolExecutionError, ToolExecutor
+from adi.tools.registry import ToolRegistry
 
 SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
 NMAP_XML_FIXTURE = (

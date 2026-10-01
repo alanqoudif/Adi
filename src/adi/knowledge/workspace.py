@@ -1,7 +1,7 @@
-"""The Workspace: the façade the rest of KAI uses to read and update an
+"""The Workspace: the façade the rest of Adi uses to read and update an
 assessment's persistent target knowledge.
 
-Nothing outside this module should touch `kai.knowledge.db` directly —
+Nothing outside this module should touch `adi.knowledge.db` directly —
 that keeps the ORM an implementation detail and gives us one place that
 knows how to turn an `Observation` into typed graph state.
 """
@@ -14,7 +14,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from kai.knowledge.db import (
+from adi.knowledge.db import (
     ActionRecord,
     AssessmentRecord,
     FindingRecord,
@@ -25,8 +25,8 @@ from kai.knowledge.db import (
     make_session_factory,
     new_id,
 )
-from kai.knowledge.observations import Observation, ObservationType
-from kai.scope.models import Scope
+from adi.knowledge.observations import Observation, ObservationType
+from adi.scope.models import Scope
 
 
 class Workspace:

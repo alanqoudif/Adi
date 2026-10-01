@@ -1,14 +1,14 @@
 
-from kai.config.models import KaiConfig
-from kai.knowledge.observations import Observation, ObservationType
-from kai.scope.models import AssessmentMode, Scope
+from adi.config.models import AdiConfig
+from adi.knowledge.observations import Observation, ObservationType
+from adi.scope.models import AssessmentMode, Scope
 
 
 def test_assessment_resumes_with_prior_observations(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    from kai.assessment import Assessment
+    from adi.assessment import Assessment
 
-    config = KaiConfig()
+    config = AdiConfig()
     config.runtime.type = "mock"
 
     scope = Scope(name="resume-test", mode=AssessmentMode.LAB, targets=["lab.local"])

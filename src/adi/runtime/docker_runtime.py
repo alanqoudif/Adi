@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import uuid
 
-from kai.runtime.process import ExecutionResult, ExecutionRuntime, utcnow
+from adi.runtime.process import ExecutionResult, ExecutionRuntime, utcnow
 
 try:
     from docker.errors import DockerException
@@ -29,7 +29,7 @@ class DockerUnavailableError(RuntimeError):
 
 
 class DockerKaliRuntime(ExecutionRuntime):
-    def __init__(self, image: str = "kai-kali:latest", workspace_dir: str | None = None,
+    def __init__(self, image: str = "adi-kali:latest", workspace_dir: str | None = None,
                  network_mode: str = "bridge", mem_limit: str = "1g", pids_limit: int = 256):
         self.image = image
         self.workspace_dir = workspace_dir
@@ -41,7 +41,7 @@ class DockerKaliRuntime(ExecutionRuntime):
     def _get_client(self):
         if not _DOCKER_SDK_AVAILABLE:
             raise DockerUnavailableError(
-                "the 'docker' Python package is not installed (pip install kai[docker])"
+                "the 'docker' Python package is not installed (pip install adi[docker])"
             )
         if self._client is None:
             self._client = docker.from_env()

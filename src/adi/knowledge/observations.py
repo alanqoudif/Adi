@@ -3,7 +3,7 @@
 An observation is a raw, falsifiable fact produced by a deterministic parser
 (or occasionally by a tightly-constrained LLM reading). It is NOT a
 vulnerability, NOT a hypothesis, and NOT a finding — see docs/agent-loop.md
-for the distinction KAI must preserve.
+for the distinction Adi must preserve.
 """
 
 from __future__ import annotations

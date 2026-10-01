@@ -1,4 +1,4 @@
-"""KAI command-line interface."""
+"""Adi command-line interface."""
 
 from __future__ import annotations
 
@@ -9,21 +9,21 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from kai import __version__
-from kai.assessment import Assessment, discover_skills_dir
-from kai.config.settings import load_config
-from kai.runtime.docker_runtime import DockerKaliRuntime
-from kai.scope.models import AssessmentMode, Scope
-from kai.tools.registry import ToolRegistry
+from adi import __version__
+from adi.assessment import Assessment, discover_skills_dir
+from adi.config.settings import load_config
+from adi.runtime.docker_runtime import DockerKaliRuntime
+from adi.scope.models import AssessmentMode, Scope
+from adi.tools.registry import ToolRegistry
 
-app = typer.Typer(add_completion=False, help="KAI — autonomous security assessment workspace.")
+app = typer.Typer(add_completion=False, help="Adi — autonomous security assessment workspace.")
 console = Console()
 
 
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context, version: bool = typer.Option(False, "--version")):
     if version:
-        console.print(f"kai {__version__}")
+        console.print(f"adi {__version__}")
         raise typer.Exit()
     if ctx.invoked_subcommand is None:
         console.print(ctx.get_help())
@@ -31,8 +31,8 @@ def main(ctx: typer.Context, version: bool = typer.Option(False, "--version")):
 
 @app.command()
 def doctor():
-    """Check that KAI's environment is ready."""
-    console.print("[bold]KAI Environment Check[/bold]\n")
+    """Check that Adi's environment is ready."""
+    console.print("[bold]Adi Environment Check[/bold]\n")
     ok = True
 
     console.print(f"[green]✓[/green] Python {sys.version_info.major}.{sys.version_info.minor}")
@@ -48,8 +48,8 @@ def doctor():
         console.print(
             f"[yellow]✗[/yellow] Docker runtime unavailable "
             f"(no Docker daemon reachable, or image '{config.runtime.image}' not built). "
-            f"KAI will refuse to run tools against real targets without an isolated runtime "
-            f"unless runtime.type=local is explicitly opted into in .kai.yaml."
+            f"Adi will refuse to run tools against real targets without an isolated runtime "
+            f"unless runtime.type=local is explicitly opted into in .adi.yaml."
         )
         ok = False
 
@@ -76,7 +76,7 @@ def doctor():
         console.print(f"    {mark} {tool.metadata.name}")
 
     import os
-    if os.environ.get("KAI_LLM_API_KEY") or config.provider.api_key_env in os.environ:
+    if os.environ.get("ADI_LLM_API_KEY") or config.provider.api_key_env in os.environ:
         console.print("[green]✓[/green] LLM provider configured")
     else:
         console.print(
@@ -87,9 +87,9 @@ def doctor():
 
     console.print()
     if ok:
-        console.print("[bold green]KAI is ready.[/bold green]")
+        console.print("[bold green]Adi is ready.[/bold green]")
     else:
-        console.print("[bold yellow]KAI has warnings above — see docs/architecture.md.[/bold yellow]")
+        console.print("[bold yellow]Adi has warnings above — see docs/architecture.md.[/bold yellow]")
 
 
 @app.command()
@@ -134,7 +134,7 @@ def lab(
     console.print()
     console.print(
         "[yellow]Note:[/yellow] the autonomous planning loop (Phase 2) is not yet active in "
-        "this build. Use 'kai run-tool' or the Python API to execute tools against this "
+        "this build. Use 'adi run-tool' or the Python API to execute tools against this "
         "assessment's workspace."
     )
 
@@ -192,7 +192,7 @@ def assessments():
     """List all known assessments."""
     ids = Assessment.list_ids()
     if not ids:
-        console.print("No assessments yet. Run 'kai lab <target>' or 'kai audit <target>'.")
+        console.print("No assessments yet. Run 'adi lab <target>' or 'adi audit <target>'.")
         return
     for assessment_id in ids:
         console.print(assessment_id)

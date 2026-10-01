@@ -1,6 +1,6 @@
 """Shared action types.
 
-These live outside both `kai.agent` and `kai.scope` because both depend on
+These live outside both `adi.agent` and `adi.scope` because both depend on
 them: the planner produces `PlannedAction`s, and the scope engine authorizes
 them before execution. Keeping the type here avoids a circular import
 between those two packages.

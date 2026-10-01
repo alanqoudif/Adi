@@ -1,6 +1,6 @@
 """SQLAlchemy persistence layer for an assessment workspace.
 
-This is the canonical, durable state. A NetworkX graph (see `kai.knowledge.graph`)
+This is the canonical, durable state. A NetworkX graph (see `adi.knowledge.graph`)
 is derived from it on demand for relationship queries — it is not the source
 of truth, so nothing is lost if the graph is rebuilt.
 """

@@ -11,8 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
-from kai.actions import ActionType, PlannedAction, RiskLevel
-from kai.scope.models import Scope
+from adi.actions import ActionType, PlannedAction, RiskLevel
+from adi.scope.models import Scope
 
 # Capabilities that touch live credentials / account state and therefore
 # require `permissions.authentication_testing` regardless of tool chosen.

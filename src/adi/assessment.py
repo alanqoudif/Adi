@@ -1,4 +1,4 @@
-"""Assessment lifecycle: the `.kai/assessments/<id>/` workspace directory,
+"""Assessment lifecycle: the `.adi/assessments/<id>/` workspace directory,
 tying together scope, the knowledge workspace, the tool registry, and a
 runtime. This is the object the CLI and (from Phase 2) the orchestrator
 build everything else around."""
@@ -8,34 +8,34 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from kai.config.models import KaiConfig
-from kai.knowledge.workspace import Workspace
-from kai.runtime.docker_runtime import DockerKaliRuntime
-from kai.runtime.mock import MockRuntime
-from kai.runtime.process import ExecutionRuntime
-from kai.runtime.shell import LocalRuntime
-from kai.scope.engine import ScopeEngine
-from kai.scope.models import Scope
-from kai.tools.executor import ToolExecutor
-from kai.tools.registry import ToolRegistry
+from adi.config.models import AdiConfig
+from adi.knowledge.workspace import Workspace
+from adi.runtime.docker_runtime import DockerKaliRuntime
+from adi.runtime.mock import MockRuntime
+from adi.runtime.process import ExecutionRuntime
+from adi.runtime.shell import LocalRuntime
+from adi.scope.engine import ScopeEngine
+from adi.scope.models import Scope
+from adi.tools.executor import ToolExecutor
+from adi.tools.registry import ToolRegistry
 
 
 def assessments_root(project_root: Path | None = None) -> Path:
-    return (project_root or Path.cwd()) / ".kai" / "assessments"
+    return (project_root or Path.cwd()) / ".adi" / "assessments"
 
 
 def assessment_dir(assessment_id: str, project_root: Path | None = None) -> Path:
     return assessments_root(project_root) / assessment_id
 
 
-def build_runtime(config: KaiConfig, workspace_dir: Path | None = None) -> ExecutionRuntime:
+def build_runtime(config: AdiConfig, workspace_dir: Path | None = None) -> ExecutionRuntime:
     if config.runtime.type == "mock":
         return MockRuntime()
     if config.runtime.type == "local":
         if not config.runtime.allow_local:
             raise RuntimeError(
                 "runtime.type is 'local' but runtime.allow_local is not set to true "
-                "in .kai.yaml — local execution is unsandboxed and opt-in only"
+                "in .adi.yaml — local execution is unsandboxed and opt-in only"
             )
         return LocalRuntime()
     return DockerKaliRuntime(
@@ -69,7 +69,7 @@ class Assessment:
         return self.workspace.assessment_id
 
     @classmethod
-    def create(cls, scope: Scope, config: KaiConfig, project_root: Path | None = None) -> Assessment:
+    def create(cls, scope: Scope, config: AdiConfig, project_root: Path | None = None) -> Assessment:
         workspace_tmp_dir = assessments_root(project_root)
         workspace_tmp_dir.mkdir(parents=True, exist_ok=True)
         # the id is only known after Workspace.create, so build in two steps
@@ -84,7 +84,7 @@ class Assessment:
         return cls._build(workspace, scope, config, final_dir)
 
     @classmethod
-    def resume(cls, assessment_id: str, config: KaiConfig, project_root: Path | None = None) -> Assessment:
+    def resume(cls, assessment_id: str, config: AdiConfig, project_root: Path | None = None) -> Assessment:
         directory = assessment_dir(assessment_id, project_root)
         db_path = directory / "state.db"
         if not db_path.exists():
@@ -94,7 +94,7 @@ class Assessment:
         return cls._build(workspace, scope, config, directory)
 
     @classmethod
-    def _build(cls, workspace: Workspace, scope: Scope, config: KaiConfig, directory: Path) -> Assessment:
+    def _build(cls, workspace: Workspace, scope: Scope, config: AdiConfig, directory: Path) -> Assessment:
         scope_engine = ScopeEngine(scope)
         registry = ToolRegistry(discover_skills_dir())
         registry.discover()

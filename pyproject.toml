@@ -1,7 +1,7 @@
 [project]
-name = "kai"
+name = "adi"
 version = "0.1.0"
-description = "KAI — autonomous security assessment workspace for authorized testing (CTFs, labs, audits)"
+description = "Adi — autonomous security assessment workspace for authorized testing (CTFs, labs, audits)"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
@@ -26,7 +26,7 @@ dev = [
 ]
 
 [project.scripts]
-kai = "kai.cli:app"
+adi = "adi.cli:app"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

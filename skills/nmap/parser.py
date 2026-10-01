@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 
-from kai.knowledge.observations import Observation, ObservationType
+from adi.knowledge.observations import Observation, ObservationType
 
 
 def parse(stdout: str, stderr: str, context: dict) -> list[Observation]:

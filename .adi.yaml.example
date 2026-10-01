@@ -1,13 +1,13 @@
-# Copy to .kai.yaml and adjust. All values here are safe defaults.
+# Copy to .adi.yaml and adjust. All values here are safe defaults.
 
 provider:
   type: anthropic
-  api_key_env: KAI_LLM_API_KEY
-  model: ${KAI_MODEL}
+  api_key_env: ADI_LLM_API_KEY
+  model: ${ADI_LLM_MODEL}
 
 runtime:
   type: docker          # docker (default, isolated) | local (opt-in, unsandboxed) | mock (tests)
-  image: kai-kali:latest
+  image: adi-kali:latest
   allow_local: false
 
 agent:

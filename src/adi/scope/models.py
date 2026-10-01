@@ -2,7 +2,7 @@
 
 Scope is the technical boundary of an assessment. Every action the agent
 takes must be authorized against a Scope before execution — see
-`kai.scope.engine.ScopeEngine`.
+`adi.scope.engine.ScopeEngine`.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ class TestAccount(BaseModel):
 
     The password itself is never stored here — only a reference to where it
     can be resolved from (an environment variable), so it never ends up in
-    the LLM context, logs, or reports. See `kai.evidence.sanitizer`.
+    the LLM context, logs, or reports. See `adi.evidence.sanitizer`.
     """
 
     name: str
@@ -53,7 +53,7 @@ class RateLimits(BaseModel):
 class Scope(BaseModel):
     """The authorized boundary for an assessment.
 
-    `targets` and `allowed_ips` define what KAI is allowed to actively test.
+    `targets` and `allowed_ips` define what Adi is allowed to actively test.
     Anything observed (e.g. a redirect, a linked asset) that falls outside
     this boundary must be recorded as an external dependency, never tested.
     """
