@@ -12,6 +12,8 @@ from rich.table import Table
 from adi import __version__
 from adi.assessment import Assessment, discover_skills_dir
 from adi.config.settings import load_config
+from adi.llm.base import LLMError, MalformedResponseError
+from adi.llm.router import ProviderNotConfiguredError, build_provider
 from adi.runtime.docker_runtime import DockerKaliRuntime
 from adi.scope.models import AssessmentMode, Scope
 from adi.tools.registry import ToolRegistry
@@ -116,14 +118,22 @@ def tools():
 def lab(
     target: str = typer.Argument(..., help="Target host/IP/URL for the lab assessment."),
     name: str = typer.Option(None, help="Assessment name (defaults to target)."),
+    goal: str = typer.Option(
+        "Assess the target and identify what is discoverable within scope.",
+        help="The goal given to the planner in --autonomous mode.",
+    ),
     max_actions: int = typer.Option(150, help="Action budget for this assessment."),
+    autonomous: bool = typer.Option(
+        False, "--autonomous", help="Run the LLM-driven autonomous planning loop."
+    ),
 ):
-    """Create and start a LAB-mode assessment against an isolated target
-    (CTF box, local vulnerable app, mock exam environment)."""
+    """Create (and optionally autonomously run) a LAB-mode assessment against
+    an isolated target (CTF box, local vulnerable app, mock exam environment)."""
     config = load_config()
     scope = Scope(
         name=name or f"lab-{target}",
         mode=AssessmentMode.LAB,
+        goal=goal,
         targets=[target],
         max_actions=max_actions,
     )
@@ -132,11 +142,53 @@ def lab(
     console.print(f"Target: {target}")
     console.print(f"Workspace: {assessment.directory}")
     console.print()
-    console.print(
-        "[yellow]Note:[/yellow] the autonomous planning loop (Phase 2) is not yet active in "
-        "this build. Use 'adi run-tool' or the Python API to execute tools against this "
-        "assessment's workspace."
-    )
+
+    if not autonomous:
+        console.print(
+            "Use 'adi lab ... --autonomous' to run the agent loop, or 'adi run-tool' / the "
+            "Python API to execute individual tools against this assessment's workspace."
+        )
+        return
+
+    _run_autonomous(assessment, config)
+
+
+def _run_autonomous(assessment: Assessment, config) -> None:
+    try:
+        llm = build_provider(config, role="planner")
+    except ProviderNotConfiguredError as exc:
+        console.print(f"[red]Cannot start autonomous mode:[/red] {exc}")
+        raise typer.Exit(1)
+
+    orchestrator = assessment.build_orchestrator(llm)
+
+    async def _run():
+        return await orchestrator.run()
+
+    try:
+        outcomes = asyncio.run(_run())
+    except (LLMError, MalformedResponseError) as exc:
+        console.print(f"[red]Autonomous assessment stopped:[/red] {exc}")
+        raise typer.Exit(1)
+
+    console.print(f"\n[bold]{len(outcomes)} step(s) taken[/bold]\n")
+    for outcome in outcomes:
+        action = outcome.action
+        marker = {
+            "completed": "[green]✓[/green]", "completed_assessment": "[green]✓[/green]",
+            "blocked": "[yellow]⊘[/yellow]", "failed": "[red]✗[/red]",
+            "stopped": "[yellow]■[/yellow]", "paused": "[yellow]⏸[/yellow]",
+        }.get(outcome.status, "•")
+        if action:
+            console.print(f"{marker} {action.action_type.value} "
+                           f"{action.tool or ''} {action.target or ''} — {outcome.detail}")
+            if config.ui.show_reason_summaries and action.reason_summary:
+                console.print(f"    reason: {action.reason_summary}")
+        else:
+            console.print(f"{marker} {outcome.status}: {outcome.detail}")
+
+    console.print(f"\nAssessment: {assessment.id}")
+    console.print("Run 'adi status <assessment-id>' for the current attack-surface summary.")
 
 
 @app.command("run-tool")
@@ -170,21 +222,33 @@ def run_tool(
 @app.command()
 def status(assessment_id: str = typer.Argument(...)):
     """Show the current state of an assessment."""
+    from adi.agent.reasoner import HypothesisEngine
+
     config = load_config()
     assessment = Assessment.resume(assessment_id, config)
     scope = assessment.workspace.load_scope()
     hosts = assessment.workspace.list_hosts()
     services = assessment.workspace.list_services()
-    hypotheses = assessment.workspace.list_hypotheses()
+    actions = assessment.workspace.list_actions()
     findings = assessment.workspace.list_findings()
+    hyp_engine = HypothesisEngine(assessment.workspace)
+    active = hyp_engine.active()
+    rejected = hyp_engine.rejected()
 
     console.print(f"[bold]Assessment:[/bold] {assessment.id} ({scope.name})")
+    console.print(f"Goal: {scope.goal}")
     console.print(f"Mode: {scope.mode.value}")
-    console.print(f"Assets:       {len(hosts)}")
-    console.print(f"Services:     {len(services)}")
-    console.print(f"Hypotheses:   {len(hypotheses)}")
+    console.print(f"Actions used:  {len(actions)} / {scope.max_actions}")
+    console.print(f"Assets:        {len(hosts)}")
+    console.print(f"Services:      {len(services)}")
+    console.print(f"Hypotheses:    {len(active)} active, {len(rejected)} rejected")
     confirmed = [f for f in findings if f.status == "confirmed"]
-    console.print(f"Confirmed:    {len(confirmed)}")
+    console.print(f"Confirmed:     {len(confirmed)}")
+    if actions:
+        last = actions[-1]
+        console.print(f"Last action:   {last.action_type} {last.tool} {last.target} [{last.status}]")
+    else:
+        console.print("Last action:   (none yet)")
 
 
 @app.command()

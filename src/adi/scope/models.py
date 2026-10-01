@@ -60,6 +60,7 @@ class Scope(BaseModel):
 
     name: str
     mode: AssessmentMode = AssessmentMode.LAB
+    goal: str = "Assess the authorized target and report what is discovered."
 
     targets: list[str] = Field(default_factory=list)
     allowed_ips: list[str] = Field(default_factory=list)

@@ -21,6 +21,7 @@ class ActionType(str, Enum):
     SEARCH_CODE = "search_code"
     LOAD_SKILL = "load_skill"
     UPDATE_HYPOTHESIS = "update_hypothesis"
+    INVESTIGATE_HYPOTHESIS = "investigate_hypothesis"
     VERIFY_FINDING = "verify_finding"
     GENERATE_REPORT = "generate_report"
     ASK_USER = "ask_user"

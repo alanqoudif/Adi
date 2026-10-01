@@ -20,18 +20,19 @@ not as a finding.
 - Not for testing systems you do not own or are not authorized to test.
   See [docs/safety-model.md](docs/safety-model.md).
 
-## Status: Phase 1 of 6
+## Status: Phase 2 of 6
 
-This repository currently implements **Phase 1** of the roadmap below:
-assessment persistence, scope enforcement, isolated tool execution, and one
-fully working tool skill (`nmap`) end to end, with tests. There is
-deliberately no autonomous planner yet — see
-[docs/architecture.md](docs/architecture.md#known-phase-1-limitations-by-design-not-oversight).
+This repository currently implements **Phases 1–2** of the roadmap below:
+assessment persistence, scope enforcement, isolated tool execution, a
+working tool skill (`nmap`) end to end, and now a real LLM-driven agent
+loop — planner, typed actions, hypothesis state machine, loop prevention —
+all with tests. See [docs/agent-loop.md](docs/agent-loop.md) for how the
+loop fits together and exactly what it does not implement yet.
 
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Core runtime: CLI, scope, Docker/Local/Mock runtimes, tool registry, nmap skill, assessment persistence | ✅ done |
-| 2 | Agent loop: LLM abstraction, planner, typed actions, hypotheses | not started |
+| 2 | Agent loop: LLM abstraction, planner, typed actions, context builder, hypothesis engine, loop prevention | ✅ done |
 | 3 | Web capabilities: httpx, whatweb, ffuf/feroxbuster, nuclei, Playwright | not started |
 | 4 | Validation engine: evidence store, finding verifier, critic, reporting | not started |
 | 5 | Source intelligence: repo indexing, Semgrep/Gitleaks/Trivy, source↔runtime correlation | not started |
@@ -68,6 +69,17 @@ adi assessments                       # find the generated assessment id
 adi run-tool <assessment-id> nmap 127.0.0.1 --ports 1-1024
 adi status <assessment-id>
 ```
+
+To run the autonomous agent loop instead of invoking tools by hand, set an
+LLM provider and pass `--autonomous`:
+
+```bash
+export ADI_LLM_API_KEY=sk-...        # or ADI_LLM_PROVIDER=openai-compatible + ADI_LLM_BASE_URL
+adi lab 127.0.0.1 --autonomous --goal "Enumerate services and report findings."
+```
+
+Without a configured provider, `--autonomous` fails with a clear message
+rather than faking a plan — see [docs/agent-loop.md](docs/agent-loop.md).
 
 ## Adding a new tool
 

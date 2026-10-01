@@ -44,12 +44,13 @@ class ScopeEngine:
     def authorize(self, action: PlannedAction) -> ScopeDecision:
         if action.action_type in (
             ActionType.UPDATE_HYPOTHESIS,
+            ActionType.INVESTIGATE_HYPOTHESIS,
             ActionType.VERIFY_FINDING,
             ActionType.GENERATE_REPORT,
             ActionType.ASK_USER,
             ActionType.COMPLETE,
             ActionType.LOAD_SKILL,
-        ):
+        ) and action.target is None:
             return ScopeDecision(True, "internal action, not target-facing")
 
         host = self._extract_host(action.target)

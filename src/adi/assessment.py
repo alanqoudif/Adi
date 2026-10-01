@@ -8,8 +8,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from adi.agent.context_builder import ContextBuilder
+from adi.agent.orchestrator import Orchestrator
+from adi.agent.planner import Planner
+from adi.agent.scheduler import ActionBudget
 from adi.config.models import AdiConfig
 from adi.knowledge.workspace import Workspace
+from adi.llm.base import LLMProvider
 from adi.runtime.docker_runtime import DockerKaliRuntime
 from adi.runtime.mock import MockRuntime
 from adi.runtime.process import ExecutionRuntime
@@ -105,6 +110,19 @@ class Assessment:
             workspace=workspace, scope_engine=scope_engine, registry=registry,
             runtime=runtime, executor=executor, directory=directory,
         )
+
+    def build_orchestrator(self, llm: LLMProvider) -> Orchestrator:
+        """Wire a Phase 2 autonomous agent loop against this assessment's
+        existing workspace/scope/executor — see `adi.agent.orchestrator`."""
+        scope = self.workspace.load_scope()
+        context_builder = ContextBuilder(self.workspace, scope, self.registry, goal=scope.goal)
+        planner = Planner(llm)
+        budget = ActionBudget(
+            max_actions=scope.max_actions,
+            max_consecutive_failures=scope.max_consecutive_failures,
+        )
+        budget.actions_taken = len(self.workspace.list_actions())
+        return Orchestrator(self.workspace, self.executor, planner, context_builder, budget)
 
     @staticmethod
     def list_ids(project_root: Path | None = None) -> list[str]:
