@@ -1,5 +1,5 @@
-# Minimal Kali-based image for KAI's isolated tool-execution runtime.
-# Intentionally does not include every Kali package — only the tools KAI
+# Minimal Kali-based image for Adi's isolated tool-execution runtime.
+# Intentionally does not include every Kali package — only the tools Adi
 # has skills for (see skills/). Extend as new skills are added.
 #
 # NOTE: this image is not built or tested in this environment (no Docker
@@ -22,9 +22,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root user: the runtime also drops all capabilities and sets
-# no-new-privileges at container-start time (see kai.runtime.docker_runtime).
-RUN useradd -m -u 1000 kai
-USER kai
+# no-new-privileges at container-start time (see adi.runtime.docker_runtime).
+RUN useradd -m -u 1000 adi
+USER adi
 WORKDIR /workspace
 
 ENTRYPOINT []
