@@ -1,7 +1,7 @@
 User-agent: *
 Allow: /
 
-# GEO: صريح السماح لزواحف نماذج اللغة الكبرى بقراءة المحتوى والاستشهاد به
+# GEO: explicitly allow LLM/answer-engine crawlers to read and cite this content
 User-agent: GPTBot
 Allow: /
 
