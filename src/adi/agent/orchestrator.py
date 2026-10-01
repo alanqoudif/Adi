@@ -26,6 +26,7 @@ from adi.agent.context_builder import ContextBuilder
 from adi.agent.planner import Planner
 from adi.agent.reasoner import HypothesisEngine, InvalidHypothesisTransitionError
 from adi.agent.scheduler import ActionBudget
+from adi.http.workspace import HTTPWorkspace
 from adi.knowledge.hypotheses import HypothesisStatus
 from adi.knowledge.workspace import Workspace
 from adi.llm.base import LLMError, MalformedResponseError
@@ -50,6 +51,7 @@ class Orchestrator:
         planner: Planner,
         context_builder: ContextBuilder,
         budget: ActionBudget | None = None,
+        http_workspace: HTTPWorkspace | None = None,
     ):
         self.workspace = workspace
         self.executor = executor
@@ -57,6 +59,7 @@ class Orchestrator:
         self.context_builder = context_builder
         self.hypothesis_engine = HypothesisEngine(workspace)
         self.budget = budget or ActionBudget()
+        self.http_workspace = http_workspace
 
     async def run(self, max_iterations: int | None = None) -> list[StepOutcome]:
         outcomes: list[StepOutcome] = []
@@ -112,24 +115,94 @@ class Orchestrator:
     async def _dispatch(self, action: PlannedAction) -> StepOutcome:
         if action.action_type == ActionType.RUN_TOOL:
             return await self._dispatch_run_tool(action)
+        if action.action_type == ActionType.HTTP_REQUEST:
+            return await self._dispatch_http_request(action)
         if action.action_type in (ActionType.UPDATE_HYPOTHESIS, ActionType.INVESTIGATE_HYPOTHESIS):
             return self._dispatch_hypothesis(action)
         return self._dispatch_unsupported(action)
 
     async def _dispatch_run_tool(self, action: PlannedAction) -> StepOutcome:
-        if not action.tool or not action.target:
-            return StepOutcome(action=action, status="failed", detail="run_tool action missing tool/target")
+        if not action.target:
+            return StepOutcome(action=action, status="failed", detail="run_tool action missing a target")
+
+        tool_name = action.tool
+        if not tool_name:
+            # Phase 3I: capability-first selection — the planner asked for a
+            # capability, not a specific binary. Resolve the best available
+            # tool deterministically; the planner never needs to know or
+            # care which one actually ran.
+            if not action.capability:
+                return StepOutcome(action=action, status="failed",
+                                    detail="run_tool action has neither a tool nor a capability to resolve")
+            resolved = self.executor.registry.resolve(action.capability)
+            if resolved is None:
+                return StepOutcome(action=action, status="failed",
+                                    detail=f"no available tool provides capability '{action.capability}'")
+            tool_name = resolved.metadata.name
+
         try:
             observations = await self.executor.run(
-                action.tool, action.target, action.parameters,
+                tool_name, action.target, action.parameters,
                 capability=action.capability, reason_summary=action.reason_summary,
             )
             return StepOutcome(action=action, status="completed",
-                                detail=f"{len(observations)} observation(s) recorded")
+                                detail=f"[{tool_name}] {len(observations)} observation(s) recorded")
         except ScopeViolationError as exc:
             return StepOutcome(action=action, status="blocked", detail=exc.reason)
         except ToolExecutionError as exc:
             return StepOutcome(action=action, status="failed", detail=str(exc))
+
+    async def _dispatch_http_request(self, action: PlannedAction) -> StepOutcome:
+        if self.http_workspace is None:
+            return StepOutcome(action=action, status="failed",
+                                detail="no HTTP workspace configured for this assessment")
+        params = action.parameters or {}
+        url = params.get("url") or action.target
+        if not url:
+            return StepOutcome(action=action, status="failed", detail="http_request action missing a url")
+
+        if action.capability == "discover_robots_sitemap":
+            # Phase 3E: a distinct, low-cost discovery capability — never
+            # run unconditionally, only when the planner chooses it.
+            observations = await self.http_workspace.discover_robots_and_sitemap(
+                url, session_id=params.get("session_id", "anonymous"),
+            )
+            self.workspace.record_action(
+                action_type=action.action_type.value, capability=action.capability,
+                tool="", target=url, parameters_json=json.dumps(params),
+                reason_summary=action.reason_summary, scope_allowed=True,
+                scope_reason="within scope", status="completed",
+            )
+            return StepOutcome(action=action, status="completed",
+                                detail=f"{len(observations)} observation(s) from robots.txt/sitemap.xml")
+
+        method = params.get("method", "GET")
+        session_id = params.get("session_id", "anonymous")
+
+        exchange, observations = await self.http_workspace.fetch_with_exchange(
+            method, url, session_id=session_id, body=params.get("body"),
+            follow_redirects=params.get("follow_redirects", False),
+            source="autonomous_http_request",
+        )
+
+        blocked = exchange.error is not None and "not within the authorized scope" in exchange.error
+        status_text = (
+            f"status {exchange.response.status}" if exchange.response else (exchange.error or "no response")
+        )
+        self.workspace.record_action(
+            action_type=action.action_type.value, capability=action.capability,
+            tool="", target=url, parameters_json=json.dumps(params),
+            reason_summary=action.reason_summary,
+            scope_allowed=not blocked, scope_reason=exchange.error or "within scope",
+            status="blocked" if blocked else ("failed" if exchange.error else "completed"),
+        )
+
+        if blocked:
+            return StepOutcome(action=action, status="blocked", detail=exchange.error)
+        if exchange.error:
+            return StepOutcome(action=action, status="failed", detail=exchange.error)
+        return StepOutcome(action=action, status="completed",
+                            detail=f"{status_text}, {len(observations)} observation(s) recorded")
 
     def _dispatch_hypothesis(self, action: PlannedAction) -> StepOutcome:
         params = action.parameters or {}

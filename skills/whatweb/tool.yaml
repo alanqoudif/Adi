@@ -1,0 +1,30 @@
+name: whatweb
+
+category:
+  - web
+  - fingerprinting
+
+description: >
+  Web technology fingerprinting — identifies frameworks, servers, CMSes,
+  and libraries in use by a web application.
+
+capabilities:
+  - fingerprint_web_application
+
+risk_level: low
+
+requires:
+  target: true
+
+supports:
+  url: true
+
+output:
+  machine_readable: true
+  preferred_format: json
+
+execution:
+  timeout_seconds: 120
+
+scope_requirements:
+  target_must_be_authorized: true

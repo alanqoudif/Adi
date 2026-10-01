@@ -1,0 +1,43 @@
+{
+  "commandline": "ffuf -u http://127.0.0.1:8080/FUZZ -w tiny.txt -of json -o /dev/stdout",
+  "time": "2026-10-01T00:00:00Z",
+  "results": [
+    {
+      "input": {"FUZZ": "login"},
+      "position": 1,
+      "status": 200,
+      "length": 217,
+      "words": 16,
+      "lines": 7,
+      "content-type": "text/html",
+      "duration": 1200000,
+      "url": "http://127.0.0.1:8080/login",
+      "host": "127.0.0.1"
+    },
+    {
+      "input": {"FUZZ": "admin"},
+      "position": 2,
+      "status": 403,
+      "length": 20,
+      "words": 2,
+      "lines": 1,
+      "content-type": "text/html",
+      "duration": 980000,
+      "url": "http://127.0.0.1:8080/admin",
+      "host": "127.0.0.1"
+    },
+    {
+      "input": {"FUZZ": "notfoundxyz"},
+      "position": 3,
+      "status": 404,
+      "length": 35,
+      "words": 2,
+      "lines": 1,
+      "content-type": "text/html",
+      "duration": 850000,
+      "url": "http://127.0.0.1:8080/notfoundxyz",
+      "host": "127.0.0.1"
+    }
+  ],
+  "config": {}
+}

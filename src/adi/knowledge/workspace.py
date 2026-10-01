@@ -20,6 +20,7 @@ from adi.knowledge.db import (
     EndpointRecord,
     FindingRecord,
     HostRecord,
+    HttpExchangeRecord,
     HypothesisRecord,
     ObservationRecord,
     ParameterRecord,
@@ -288,6 +289,26 @@ class Workspace:
         with self._session_factory() as session:
             rows = session.execute(
                 select(SessionRecord).where(SessionRecord.assessment_id == self.assessment_id)
+            ).scalars().all()
+            session.expunge_all()
+            return list(rows)
+
+    # -- HTTP exchanges ----------------------------------------------------
+
+    def record_http_exchange(self, **fields) -> str:
+        exchange_id = new_id("http")
+        with self._session_factory() as session:
+            record = HttpExchangeRecord(id=exchange_id, assessment_id=self.assessment_id, **fields)
+            session.add(record)
+            session.commit()
+        return exchange_id
+
+    def list_http_exchanges(self) -> list[HttpExchangeRecord]:
+        with self._session_factory() as session:
+            rows = session.execute(
+                select(HttpExchangeRecord)
+                .where(HttpExchangeRecord.assessment_id == self.assessment_id)
+                .order_by(HttpExchangeRecord.started_at)
             ).scalars().all()
             session.expunge_all()
             return list(rows)

@@ -1,0 +1,30 @@
+name: nuclei
+
+category:
+  - web
+  - scanning
+
+description: >
+  Template-based web vulnerability scanner. Its alerts are indications to
+  investigate, never confirmed findings — see SKILL.md.
+
+capabilities:
+  - web_template_scan
+
+risk_level: moderate
+
+requires:
+  target: true
+
+supports:
+  url: true
+
+output:
+  machine_readable: true
+  preferred_format: jsonl
+
+execution:
+  timeout_seconds: 600
+
+scope_requirements:
+  target_must_be_authorized: true

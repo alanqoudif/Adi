@@ -34,6 +34,7 @@ class ToolExecutionSpec(BaseModel):
     timeout_seconds: int = 300
     default_concurrency: int = 1
     binary: str | None = None  # defaults to tool name
+    priority: int = 100  # lower runs first when multiple tools share a capability
 
 
 class ToolScopeRequirements(BaseModel):
@@ -101,6 +102,18 @@ class ToolRegistry:
 
     def available_by_capability(self, capability: str) -> list[RegisteredTool]:
         return [t for t in self.by_capability(capability) if t.available]
+
+    def resolve(self, capability: str) -> RegisteredTool | None:
+        """Phase 3I: capability-first tool selection. The planner asks for
+        a capability (e.g. 'discover_web_content'), never a specific binary
+        — this picks the best *available* tool for it, deterministically
+        (lowest `execution.priority`, then name, so the choice never
+        silently changes run to run)."""
+        candidates = sorted(
+            self.available_by_capability(capability),
+            key=lambda t: (t.metadata.execution.priority, t.metadata.name),
+        )
+        return candidates[0] if candidates else None
 
     def all(self) -> list[RegisteredTool]:
         return list(self._tools.values())

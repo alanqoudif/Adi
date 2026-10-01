@@ -53,6 +53,7 @@ class AssessmentRecord(Base):
     hypotheses: Mapped[list[HypothesisRecord]] = relationship(back_populates="assessment")
     findings: Mapped[list[FindingRecord]] = relationship(back_populates="assessment")
     sessions: Mapped[list[SessionRecord]] = relationship(back_populates="assessment")
+    http_exchanges: Mapped[list[HttpExchangeRecord]] = relationship(back_populates="assessment")
 
 
 class HostRecord(Base):
@@ -166,6 +167,32 @@ class SessionRecord(Base):
     )
 
     assessment: Mapped[AssessmentRecord] = relationship(back_populates="sessions")
+
+
+class HttpExchangeRecord(Base):
+    """A persisted HTTP request/response pair. Headers are already redacted
+    by the time they reach this record — see `adi.http.redaction`."""
+
+    __tablename__ = "http_exchange"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    assessment_id: Mapped[str] = mapped_column(ForeignKey("assessment.id"))
+    method: Mapped[str] = mapped_column(String)
+    url: Mapped[str] = mapped_column(String)
+    session_id: Mapped[str] = mapped_column(String, default="anonymous")
+    status: Mapped[int | None] = mapped_column(nullable=True)
+    content_type: Mapped[str] = mapped_column(String, default="")
+    content_length: Mapped[int] = mapped_column(default=0)
+    body_hash: Mapped[str] = mapped_column(String, default="")
+    title: Mapped[str | None] = mapped_column(String, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String, default="http_client")
+    evidence_path: Mapped[str | None] = mapped_column(String, nullable=True)
+    redirects_json: Mapped[str] = mapped_column(Text, default="[]")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    assessment: Mapped[AssessmentRecord] = relationship(back_populates="http_exchanges")
 
 
 class ActionRecord(Base):

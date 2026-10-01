@@ -15,6 +15,7 @@ from adi.knowledge.observations import Observation, ObservationType
 from adi.knowledge.workspace import Workspace
 from adi.runtime.process import ExecutionResult, ExecutionRuntime
 from adi.scope.engine import ScopeEngine
+from adi.scope.rate_limiter import RateLimiter
 from adi.tools.loader import load_adapter, load_parser
 from adi.tools.registry import RegisteredTool, ToolRegistry
 
@@ -37,6 +38,7 @@ class ToolExecutor:
         scope_engine: ScopeEngine,
         workspace: Workspace,
         raw_output_dir: Path,
+        rate_limiter: RateLimiter | None = None,
     ):
         self.registry = registry
         self.runtime = runtime
@@ -44,6 +46,7 @@ class ToolExecutor:
         self.workspace = workspace
         self.raw_output_dir = raw_output_dir
         self.raw_output_dir.mkdir(parents=True, exist_ok=True)
+        self.rate_limiter = rate_limiter
 
     async def run(self, tool_name: str, target: str, parameters: dict | None = None,
                    capability: str = "", reason_summary: str = "") -> list[Observation]:
@@ -84,10 +87,25 @@ class ToolExecutor:
                 f"tool '{tool_name}' is not installed/available on this runtime"
             )
 
-        argv = self._build_argv(tool, target, parameters)
-        result = await self.runtime.execute(
-            argv, timeout=tool.metadata.execution.timeout_seconds
-        )
+        try:
+            argv = self._build_argv(tool, target, parameters)
+        except Exception as exc:
+            self.workspace.update_action_result(
+                action_id, exit_code=1, timed_out=False, stdout_path=None, stderr_path=None,
+                status="failed",
+            )
+            raise ToolExecutionError(f"could not build command for '{tool_name}': {exc}") from exc
+
+        if self.rate_limiter is not None:
+            async with self.rate_limiter.concurrency_guard():
+                await self.rate_limiter.acquire()
+                result = await self.runtime.execute(
+                    argv, timeout=tool.metadata.execution.timeout_seconds
+                )
+        else:
+            result = await self.runtime.execute(
+                argv, timeout=tool.metadata.execution.timeout_seconds
+            )
         self._persist_raw(action_id, result)
         self._update_action_result(action_id, result)
 

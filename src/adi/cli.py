@@ -96,22 +96,82 @@ def doctor():
 
 @app.command()
 def tools():
-    """List discovered security tool skills."""
+    """List discovered security tool skills, their availability, and which
+    capability each one provides."""
     registry = ToolRegistry(discover_skills_dir())
-    discovered = registry.discover()
+    discovered = sorted(registry.discover(), key=lambda t: t.metadata.name)
     table = Table(title="Tool Skills")
     table.add_column("Name")
     table.add_column("Available")
+    table.add_column("Version")
     table.add_column("Risk")
     table.add_column("Capabilities")
     for tool in discovered:
+        version = _tool_version(tool) if tool.available else "-"
         table.add_row(
             tool.metadata.name,
-            "yes" if tool.available else "no",
+            "[green]available[/green]" if tool.available else "[yellow]unavailable[/yellow]",
+            version,
             tool.metadata.risk_level,
             ", ".join(tool.metadata.capabilities),
         )
     console.print(table)
+    console.print("\nRun 'adi tool <name>' for detailed skill information.")
+
+
+def _tool_version(tool) -> str:
+    """Best-effort version probe — never fails the command if the binary
+    doesn't support a version flag or isn't actually runnable."""
+    import subprocess
+
+    for flag in ("--version", "-version", "-V"):
+        try:
+            result = subprocess.run(
+                [tool.binary_path, flag], capture_output=True, text=True, timeout=5, check=False,
+            )
+            output = (result.stdout or result.stderr).strip().splitlines()
+            if output:
+                return output[0][:40]
+        except Exception:
+            continue
+    return "unknown"
+
+
+@app.command()
+def tool(name: str = typer.Argument(..., help="Tool name, e.g. 'nmap' or 'ffuf'.")):
+    """Show detailed skill information for one tool — not just its raw
+    tool.yaml, but what it's for, when Adi selects it, and its limitations."""
+    registry = ToolRegistry(discover_skills_dir())
+    registry.discover()
+    registered = registry.get(name)
+    if registered is None:
+        console.print(f"[red]No skill named '{name}' is registered.[/red]")
+        raise typer.Exit(1)
+
+    meta = registered.metadata
+    console.print(f"[bold]{meta.name}[/bold]")
+    console.print(f"Capabilities: {', '.join(meta.capabilities) or 'none'}")
+    console.print(f"Categories:   {', '.join(meta.category) or 'none'}")
+    console.print(f"Risk level:   {meta.risk_level}")
+    status_text = "[green]available[/green]" if registered.available else "[yellow]unavailable[/yellow]"
+    console.print(f"Availability: {status_text}")
+    if registered.available:
+        console.print(f"Installed at: {registered.binary_path}")
+        console.print(f"Version:      {_tool_version(registered)}")
+    console.print(f"Timeout:      {meta.execution.timeout_seconds}s")
+    if meta.capabilities:
+        for cap in meta.capabilities:
+            siblings = [t.metadata.name for t in registry.by_capability(cap) if t.metadata.name != meta.name]
+            if siblings:
+                console.print(f"Shares capability '{cap}' with: {', '.join(siblings)} "
+                               f"(Adi picks by priority + availability — see 'adi tools')")
+
+    skill_md = meta.skill_dir / "SKILL.md" if meta.skill_dir else None
+    if skill_md and skill_md.exists():
+        console.print()
+        console.print(skill_md.read_text())
+    else:
+        console.print("\n[yellow]No SKILL.md found for this tool.[/yellow]")
 
 
 @app.command()
@@ -221,38 +281,59 @@ def run_tool(
 
 @app.command()
 def status(assessment_id: str = typer.Argument(...)):
-    """Show the current state of an assessment."""
+    """Show the current state of an assessment, including discovered web
+    attack surface (Phase 3)."""
     from adi.agent.reasoner import HypothesisEngine
 
     config = load_config()
     assessment = Assessment.resume(assessment_id, config)
-    scope = assessment.workspace.load_scope()
-    hosts = assessment.workspace.list_hosts()
-    services = assessment.workspace.list_services()
-    endpoints = assessment.workspace.list_endpoints()
-    sessions = assessment.workspace.list_sessions()
-    actions = assessment.workspace.list_actions()
-    findings = assessment.workspace.list_findings()
-    hyp_engine = HypothesisEngine(assessment.workspace)
+    ws = assessment.workspace
+    scope = ws.load_scope()
+    hosts = ws.list_hosts()
+    services = ws.list_services()
+    endpoints = ws.list_endpoints()
+    sessions = ws.list_sessions()
+    actions = ws.list_actions()
+    findings = ws.list_findings()
+    exchanges = ws.list_http_exchanges()
+    observations = ws.list_observations()
+    hyp_engine = HypothesisEngine(ws)
     active = hyp_engine.active()
     rejected = hyp_engine.rejected()
 
-    console.print(f"[bold]Assessment:[/bold] {assessment.id} ({scope.name})")
-    console.print(f"Goal: {scope.goal}")
-    console.print(f"Mode: {scope.mode.value}")
-    console.print(f"Actions used:  {len(actions)} / {scope.max_actions}")
-    console.print(f"Assets:        {len(hosts)}")
-    console.print(f"Services:      {len(services)}")
-    console.print(f"Endpoints:     {len(endpoints)}")
-    console.print(f"Sessions:      {', '.join(s.name for s in sessions) or 'none'}")
-    console.print(f"Hypotheses:    {len(active)} active, {len(rejected)} rejected")
+    parameter_count = sum(len(ws.list_parameters(e.id)) for e in endpoints)
+    form_count = sum(1 for e in endpoints if "POST" in e.methods_json and ws.list_parameters(e.id))
+    technologies = {o.value.get("name") for o in observations if o.type == "technology_fingerprint"}
+    scanner_indications = [o for o in observations if o.type == "scanner_alert"]
+    web_apps = len({e.host_id for e in endpoints})
     confirmed = [f for f in findings if f.status == "confirmed"]
-    console.print(f"Confirmed:     {len(confirmed)}")
+
+    console.print(f"[bold]Assessment:[/bold] {assessment.id} ({scope.name})")
+    console.print(f"Mode:          {scope.mode.value}")
+    console.print(f"Goal:          {scope.goal}")
+    console.print(f"Actions used:  {len(actions)} / {scope.max_actions}")
+    console.print()
+    console.print(f"Assets:                {len(hosts)}")
+    console.print(f"Services:              {len(services)}")
+    console.print(f"Web applications:      {web_apps}")
+    console.print(f"Endpoints:             {len(endpoints)}")
+    console.print(f"Parameters:            {parameter_count}")
+    console.print(f"Forms:                 {form_count}")
+    console.print(f"Sessions:              {', '.join(s.name for s in sessions) or 'none'}")
+    console.print(f"Technologies:          {', '.join(sorted(t for t in technologies if t)) or 'none'}")
+    console.print(f"HTTP exchanges:        {len(exchanges)}")
+    console.print(f"Scanner indications:   {len(scanner_indications)}")
+    console.print()
+    console.print(f"Active hypotheses:     {len(active)}")
+    console.print(f"Rejected hypotheses:   {len(rejected)}")
+    console.print(f"Confirmed findings:    {len(confirmed)}")
+    console.print()
     if actions:
         last = actions[-1]
         console.print(f"Last action:   {last.action_type} {last.tool} {last.target} [{last.status}]")
     else:
         console.print("Last action:   (none yet)")
+    console.print(f"Current state: {'active' if scope.max_actions > len(actions) else 'budget exhausted'}")
 
 
 @app.command()

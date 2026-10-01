@@ -20,20 +20,24 @@ not as a finding.
 - Not for testing systems you do not own or are not authorized to test.
   See [docs/safety-model.md](docs/safety-model.md).
 
-## Status: Phase 2 of 6
+## Status: Phase 3 of 6
 
-This repository currently implements **Phases 1–2** of the roadmap below:
-assessment persistence, scope enforcement, isolated tool execution, a
-working tool skill (`nmap`) end to end, and now a real LLM-driven agent
-loop — planner, typed actions, hypothesis state machine, loop prevention —
-all with tests. See [docs/agent-loop.md](docs/agent-loop.md) for how the
-loop fits together and exactly what it does not implement yet.
+This repository implements **Phases 1–3**: assessment persistence, scope
+enforcement, isolated tool execution, an LLM-driven agent loop, and now a
+full HTTP/web-discovery subsystem — Adi can start from just a root URL and
+autonomously discover links, forms, parameters, technologies, and API
+endpoints (via its own HTTP/HTML crawl, content-discovery tools, and —
+when Playwright is installed — real browser network capture), all folded
+into one canonical Endpoint/Parameter/Session model regardless of which
+mechanism found them. See [docs/agent-loop.md](docs/agent-loop.md) and
+[docs/web-discovery.md](docs/web-discovery.md) for details and exact
+current limitations.
 
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Core runtime: CLI, scope, Docker/Local/Mock runtimes, tool registry, nmap skill, assessment persistence | ✅ done |
 | 2 | Agent loop: LLM abstraction, planner, typed actions, context builder, hypothesis engine, loop prevention | ✅ done |
-| 3 | Web capabilities: httpx, whatweb, ffuf/feroxbuster, nuclei, Playwright | not started |
+| 3 | Web capabilities: HTTP workspace, HTML/JS discovery, whatweb/ffuf/feroxbuster/nuclei, Playwright, rate limiting | ✅ done |
 | 4 | Validation engine: evidence store, finding verifier, critic, reporting | not started |
 | 5 | Source intelligence: repo indexing, Semgrep/Gitleaks/Trivy, source↔runtime correlation | not started |
 | 6 | Tool expansion: Hydra, SMB/LDAP, packet/TLS tools | not started |

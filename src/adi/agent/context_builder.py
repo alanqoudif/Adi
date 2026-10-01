@@ -19,6 +19,8 @@ from adi.tools.registry import ToolRegistry
 
 MAX_RECENT_OBSERVATIONS = 20
 MAX_RECENT_ACTIONS = 10
+MAX_ENDPOINTS_LISTED = 15
+MAX_RECENT_HTTP = 10
 
 
 class AssetSummary(BaseModel):
@@ -37,6 +39,28 @@ class SessionSummary(BaseModel):
     authenticated: bool = False
 
 
+class EndpointGroupSummary(BaseModel):
+    prefix: str
+    count: int
+
+
+class FormSummary(BaseModel):
+    method: str
+    path: str
+    parameters: list[str] = Field(default_factory=list)
+
+
+class TechnologySummary(BaseModel):
+    name: str
+    confidence: str  # "high" | "medium" | "low"
+
+
+class RecentHttpSummary(BaseModel):
+    method: str
+    url: str
+    status: int | None
+
+
 class ActionSummary(BaseModel):
     tool: str
     target: str
@@ -53,8 +77,14 @@ class PlanningContext(BaseModel):
     scope_mode: str
     targets: list[str]
     assets: list[AssetSummary]
+    endpoint_count: int = 0
     endpoints: list[EndpointSummary] = Field(default_factory=list)
+    endpoint_groups: list[EndpointGroupSummary] = Field(default_factory=list)
+    forms: list[FormSummary] = Field(default_factory=list)
+    technologies: list[TechnologySummary] = Field(default_factory=list)
     sessions: list[SessionSummary] = Field(default_factory=list)
+    recent_http: list[RecentHttpSummary] = Field(default_factory=list)
+    scanner_indication_count: int = 0
     active_hypotheses: list[Hypothesis]
     rejected_hypothesis_titles: list[str]
     recent_actions: list[ActionSummary]
@@ -83,12 +113,33 @@ class PlanningContext(BaseModel):
         else:
             lines.append("  (none discovered yet)")
 
-        if self.endpoints:
-            lines.append("\nKnown web endpoints:")
+        if self.endpoint_count:
+            lines.append(f"\nWeb applications: {1 if self.assets else 0}")
+            lines.append(f"Known endpoints: {self.endpoint_count}")
+            if self.endpoint_groups:
+                lines.append("Endpoint groups:")
+                for g in self.endpoint_groups:
+                    lines.append(f"    {g.prefix}  {g.count}")
+            lines.append("Endpoints:")
             for ep in self.endpoints:
                 methods = "/".join(ep.methods) or "?"
                 auth = " [requires auth]" if ep.requires_auth else ""
                 lines.append(f"  - {methods} {ep.path}{auth}")
+            if self.endpoint_count > len(self.endpoints):
+                lines.append(f"  ... and {self.endpoint_count - len(self.endpoints)} more")
+
+        if self.forms:
+            lines.append("\nForms:")
+            for f in self.forms:
+                lines.append(f"    {f.method} {f.path}")
+                for p in f.parameters:
+                    lines.append(f"      {p}")
+
+        if self.technologies:
+            lines.append("\nTechnologies:")
+            for t in self.technologies:
+                suffix = f" ({t.confidence} confidence)" if t.confidence != "high" else ""
+                lines.append(f"    {t.name}{suffix}")
 
         if self.sessions:
             lines.append("\nTest identities/sessions:")
@@ -114,6 +165,15 @@ class PlanningContext(BaseModel):
                 lines.append(f"  - {a.tool} -> {a.target} [{a.status}]")
         else:
             lines.append("  (none yet)")
+
+        if self.recent_http:
+            lines.append("\nRecent HTTP:")
+            for h in self.recent_http:
+                status = h.status if h.status is not None else "error"
+                lines.append(f"    {h.method} {h.url} -> {status}")
+
+        if self.scanner_indication_count:
+            lines.append(f"\nRecent scanner indications: {self.scanner_indication_count}")
 
         if self.recent_observation_summaries:
             lines.append("\nRecent observations:")
@@ -156,6 +216,23 @@ class ContextBuilder:
             SessionSummary(name=s.name, authenticated=s.authenticated) for s in sessions
         ]
 
+        endpoint_groups = self._group_endpoints(endpoints)
+        # requires-auth endpoints are the most interesting when truncating —
+        # surface those first, then fill the rest with whatever's left.
+        ordered_endpoints = sorted(endpoint_summaries, key=lambda e: not e.requires_auth)
+        shown_endpoints = ordered_endpoints[:MAX_ENDPOINTS_LISTED]
+
+        forms = self._build_forms(endpoints)
+        technologies = self._build_technologies()
+
+        exchanges = self.workspace.list_http_exchanges()[-MAX_RECENT_HTTP:]
+        recent_http = [
+            RecentHttpSummary(method=e.method, url=e.url, status=e.status) for e in exchanges
+        ]
+        scanner_indication_count = sum(
+            1 for o in self.workspace.list_observations() if o.type == "scanner_alert"
+        )
+
         recent_actions = [
             ActionSummary(tool=a.tool, target=a.target, status=a.status, capability=a.capability)
             for a in actions[-MAX_RECENT_ACTIONS:]
@@ -179,8 +256,14 @@ class ContextBuilder:
             scope_mode=self.scope.mode.value,
             targets=self.scope.targets,
             assets=assets,
-            endpoints=endpoint_summaries,
+            endpoint_count=len(endpoint_summaries),
+            endpoints=shown_endpoints,
+            endpoint_groups=endpoint_groups,
+            forms=forms,
+            technologies=technologies,
             sessions=session_summaries,
+            recent_http=recent_http,
+            scanner_indication_count=scanner_indication_count,
             active_hypotheses=active,
             rejected_hypothesis_titles=rejected_titles,
             recent_actions=recent_actions,
@@ -190,3 +273,44 @@ class ContextBuilder:
             actions_remaining=max(0, self.scope.max_actions - len(actions)),
             available_capabilities=capabilities,
         )
+
+    @staticmethod
+    def _group_endpoints(endpoints) -> list[EndpointGroupSummary]:
+        """Groups endpoints with 2+ path segments by their first segment
+        (e.g. '/api/profile' and '/api/orders' -> '/api/*': 2) so a large
+        discovered surface doesn't have to be listed endpoint-by-endpoint."""
+        counts: dict[str, int] = {}
+        for ep in endpoints:
+            segments = [s for s in ep.path.split("/") if s]
+            if len(segments) < 2:
+                continue
+            prefix = f"/{segments[0]}/*"
+            counts[prefix] = counts.get(prefix, 0) + 1
+        groups = [EndpointGroupSummary(prefix=p, count=c) for p, c in counts.items() if c > 1]
+        return sorted(groups, key=lambda g: -g.count)[:10]
+
+    def _build_forms(self, endpoints) -> list[FormSummary]:
+        forms: list[FormSummary] = []
+        for ep in endpoints:
+            methods = json.loads(ep.methods_json)
+            if "POST" not in methods:
+                continue
+            params = self.workspace.list_parameters(ep.id)
+            if not params:
+                continue
+            forms.append(FormSummary(method="POST", path=ep.path, parameters=[p.name for p in params]))
+        return forms
+
+    def _build_technologies(self) -> list[TechnologySummary]:
+        best: dict[str, str] = {}  # name -> best confidence seen
+        rank = {"high": 3, "medium": 2, "low": 1}
+        for o in self.workspace.list_observations():
+            if o.type != "technology_fingerprint":
+                continue
+            name = o.value.get("name")
+            confidence = o.value.get("confidence", "low")
+            if not name:
+                continue
+            if name not in best or rank.get(confidence, 0) > rank.get(best[name], 0):
+                best[name] = confidence
+        return [TechnologySummary(name=n, confidence=c) for n, c in best.items()]

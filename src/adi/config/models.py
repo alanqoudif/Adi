@@ -39,6 +39,14 @@ class AgentConfig(BaseModel):
     max_consecutive_failures: int = 5
 
 
+class WordlistConfig(BaseModel):
+    """Paths to wordlists used by content-discovery tools (ffuf,
+    feroxbuster, ...). Never committed to the repo — see
+    `adi.tools.wordlists` for common-path auto-detection when unset."""
+
+    web_content: str | None = None
+
+
 class AdiConfig(BaseModel):
     provider: LLMProviderConfig = Field(default_factory=LLMProviderConfig)
     models: ModelRoutingConfig = Field(default_factory=ModelRoutingConfig)
@@ -46,3 +54,4 @@ class AdiConfig(BaseModel):
     agent: AgentConfig = Field(default_factory=AgentConfig)
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     ui: UIConfig = Field(default_factory=UIConfig)
+    wordlists: WordlistConfig = Field(default_factory=WordlistConfig)

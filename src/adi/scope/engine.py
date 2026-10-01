@@ -92,6 +92,12 @@ class ScopeEngine:
 
         return ScopeDecision(True, "within scope")
 
+    def is_host_authorized(self, host: str) -> bool:
+        """Used outside the PlannedAction flow — e.g. per-hop redirect
+        authorization in `adi.http.client.HTTPClient`, where there is no
+        single action to build a ScopeDecision for."""
+        return self.scope.host_is_target(host)
+
     @staticmethod
     def _extract_host(target: str | None) -> str | None:
         if not target:
