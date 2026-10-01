@@ -1,0 +1,49 @@
+# Adi
+
+> Adi is an autonomous security assessment agent for **authorized** penetration
+> testing — CTF competitions, educational labs, and systems the operator owns
+> or is explicitly authorized to test. It is not a chatbot that suggests Kali
+> commands, and it is not a vulnerability-scanner UI: it maintains a persistent
+> typed model of the target (assets, services, endpoints, hypotheses,
+> evidence), plans the next action with an LLM, executes real security tools
+> inside an isolated Docker runtime, deterministically parses their output,
+> and only treats a finding as confirmed after actual validation — never from
+> a scanner alert alone.
+
+## Key facts
+
+- Name origin: inspired by cryptographer Adi Shamir (co-inventor of RSA).
+- License: open source, hosted on GitHub.
+- Core loop: build context → plan (LLM, typed action schema) → authorize
+  against an explicit scope engine → execute tool in an isolated runtime →
+  deterministically parse output → update the target knowledge graph →
+  update hypotheses → replan.
+- Safety is enforced in code: an explicit `ScopeEngine` blocks any action
+  against a host outside the authorized scope, tool execution happens in a
+  capability-dropped Docker container with no access to the operator's home
+  directory, SSH keys, or credentials, and there is no destructive-action,
+  persistence, or stealth/evasion capability.
+- Works with multiple LLM providers (Anthropic, OpenAI-compatible APIs
+  including OpenRouter and local inference servers) through a provider-neutral
+  abstraction.
+- Intended users: security students, CTF players, university labs, and
+  security engineers running authorized internal/staging assessments.
+- Intended NOT to be used against systems the operator does not own or is not
+  explicitly authorized to test.
+
+## الحقائق الأساسية (بالعربية)
+
+- Adi وكيل أمن سيبراني ذاتي الحكم لاختبار اختراق **مصرَّح به فقط**: مسابقات
+  CTF، مختبرات تعليمية، وأنظمة يملكها المستخدم أو لديه تفويض صريح باختبارها.
+- يحتفظ بنموذج معرفي دائم عن الهدف، ويميّز بوضوح بين الملاحظة والفرضية
+  والنتيجة المؤكدة — تنبيه الفاحص وحده لا يُعتبر أبدًا ثغرة مؤكدة.
+- الأمان مُطبَّق في الكود عبر محرك تحقق من النطاق (Scope Engine)، وتنفيذ كل
+  أداة داخل حاوية Docker معزولة بدون وصول لملفات أو مفاتيح المستخدم.
+- لا يدعم أي استخدام ضد أنظمة غير مصرَّح باختبارها.
+
+## Links
+
+- [Repository](https://github.com/alanqoudif/Adi)
+- [Architecture overview](https://github.com/alanqoudif/Adi/blob/main/docs/architecture.md)
+- [Safety model](https://github.com/alanqoudif/Adi/blob/main/docs/safety-model.md)
+- [Agent loop](https://github.com/alanqoudif/Adi/blob/main/docs/agent-loop.md)

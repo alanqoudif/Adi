@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- ===== SEO أساسي ===== -->
+<title>Adi — وكيل أمن سيبراني ذاتي الحكم لاختبار الاختراق المصرَّح به | CTF وبيئات تعليمية</title>
+<meta name="description" content="Adi أداة أمن سيبراني مستقلة (Autonomous Security Agent) تُجري اختبارات اختراق مصرَّح بها بشكل آلي: تكتشف الأصول، تفحص الخدمات، تبني فرضيات أمنية، وتتحقق منها بأدلة فعلية بدل الاعتماد على نتائج الفاحصات وحدها. مخصّصة لمسابقات CTF والمختبرات التعليمية والأنظمة المصرَّح باختبارها.">
+<meta name="keywords" content="Adi, أداة اختبار اختراق, وكيل أمني ذكي, autonomous pentest agent, AI penetration testing, CTF tool, اختبار اختراق آلي, أمن سيبراني بالذكاء الاصطناعي, nmap automation, security agent, Claude Code for security">
+<meta name="author" content="Adi Project">
+<link rel="canonical" href="https://useadi.dev/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+
+<!-- ===== Open Graph / فيسبوك - لينكدإن - واتساب ===== -->
+<meta property="og:type" content="website">
+<meta property="og:locale" content="ar_AR">
+<meta property="og:url" content="https://useadi.dev/">
+<meta property="og:title" content="Adi — وكيل أمن سيبراني ذاتي الحكم لاختبار الاختراق المصرَّح به">
+<meta property="og:description" content="أداة تفهم سطح الهجوم كما يفهم Claude Code قاعدة الشفرة: تخطّط، تنفّذ أدوات أمنية حقيقية داخل بيئة معزولة، وتتحقق من كل نتيجة قبل اعتبارها ثغرة فعلية.">
+<meta property="og:image" content="https://useadi.dev/og-cover.png">
+<meta property="og:site_name" content="Adi">
+
+<!-- ===== Twitter / X ===== -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Adi — وكيل أمن سيبراني ذاتي الحكم">
+<meta name="twitter:description" content="اختبار اختراق مصرَّح به، مؤتمت بالكامل: اكتشاف → فرضية → تحقق → تقرير. مبني للـ CTF والمختبرات والتدقيق الداخلي.">
+<meta name="twitter:image" content="https://useadi.dev/og-cover.png">
+
+<!-- ===== GEO: مؤشرات لمحركات الإجابة التوليدية (ChatGPT / Perplexity / Google AI Overviews) ===== -->
+<meta name="generator" content="static-html">
+<link rel="alternate" type="application/json" href="/llms.txt" title="Adi facts for LLM crawlers">
+
+<style>
+  :root{
+    --bg:#0b0d10; --bg-soft:#13161b; --card:#161a20; --border:#242a33;
+    --text:#e8ecf1; --muted:#9aa4b2; --accent:#39e08a; --accent-dim:#1f7a52;
+    --danger:#ff6b6b; --radius:14px; --maxw:960px;
+    font-family:"Tahoma","Segoe UI",system-ui,-apple-system,sans-serif;
+  }
+  @media (prefers-color-scheme: light){
+    :root{ --bg:#f7f8fa; --bg-soft:#ffffff; --card:#ffffff; --border:#e3e6ea; --text:#13161b; --muted:#5a6472; }
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--text);line-height:1.8;font-size:17px}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
+  header.nav{position:sticky;top:0;z-index:10;background:color-mix(in srgb, var(--bg) 85%, transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
+  .nav-inner{max-width:var(--maxw);margin:0 auto;padding:14px 20px;display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:20px;color:var(--text);text-decoration:none}
+  .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent)}
+  nav.links{display:flex;gap:22px;font-size:15px}
+  nav.links a{color:var(--muted);text-decoration:none}
+  nav.links a:hover{color:var(--text)}
+  .btn{display:inline-block;padding:10px 20px;border-radius:10px;font-weight:700;text-decoration:none;font-size:15px}
+  .btn-primary{background:var(--accent);color:#06130c}
+  .btn-ghost{border:1px solid var(--border);color:var(--text)}
+  .hero{padding:72px 0 48px;text-align:center}
+  .badge{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);background:var(--bg-soft);color:var(--muted);padding:6px 14px;border-radius:999px;font-size:13px;margin-bottom:22px}
+  h1{font-size:clamp(28px,5vw,46px);line-height:1.3;margin:0 0 18px;font-weight:800}
+  h1 span{color:var(--accent)}
+  .lede{color:var(--muted);font-size:19px;max-width:700px;margin:0 auto 34px}
+  .cta-row{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-bottom:18px}
+  .disclaimer{font-size:13px;color:var(--muted);max-width:620px;margin:0 auto}
+  section{padding:56px 0;border-top:1px solid var(--border)}
+  h2{font-size:clamp(22px,3.4vw,30px);margin:0 0 10px;font-weight:800}
+  .section-lede{color:var(--muted);margin:0 0 34px;max-width:680px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px}
+  .card h3{margin:0 0 8px;font-size:17px;display:flex;align-items:center;gap:8px}
+  .card p{margin:0;color:var(--muted);font-size:15px}
+  .pipeline{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center;background:var(--bg-soft);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-top:10px}
+  .step{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 16px;font-size:14px;font-weight:600}
+  .arrow{color:var(--accent);font-weight:900}
+  .usecases{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px}
+  .uc{border:1px solid var(--border);border-radius:var(--radius);padding:20px;background:var(--card)}
+  .uc .tag{display:inline-block;font-size:12px;color:var(--accent);background:color-mix(in srgb, var(--accent) 15%, transparent);padding:3px 10px;border-radius:999px;margin-bottom:10px}
+  .safety{background:var(--bg-soft);border:1px solid var(--border);border-radius:var(--radius);padding:26px}
+  .safety ul{margin:12px 0 0;padding-inline-start:22px;color:var(--muted)}
+  .safety li{margin-bottom:8px}
+  details{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:12px}
+  summary{cursor:pointer;font-weight:700;font-size:16px}
+  details p{color:var(--muted);margin:12px 0 0}
+  code{background:var(--bg-soft);border:1px solid var(--border);border-radius:6px;padding:2px 6px;font-size:14px;direction:ltr;display:inline-block}
+  footer{padding:40px 0;color:var(--muted);font-size:14px;text-align:center;border-top:1px solid var(--border)}
+  footer a{color:var(--muted)}
+  .final-cta{text-align:center;background:var(--bg-soft);border:1px solid var(--border);border-radius:20px;padding:48px 24px}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="#" class="brand"><span class="dot"></span> Adi</a>
+    <nav class="links">
+      <a href="#what">ما هو Adi</a>
+      <a href="#how">كيف يعمل</a>
+      <a href="#usecases">حالات الاستخدام</a>
+      <a href="#safety">الأمان</a>
+      <a href="#faq">الأسئلة الشائعة</a>
+    </nav>
+    <a class="btn btn-primary" href="https://github.com/alanqoudif/Adi" target="_blank" rel="noopener">الكود على GitHub</a>
+  </div>
+</header>
+
+<main>
+  <section class="hero wrap">
+    <span class="badge">🛡️ للاستخدام المصرَّح به فقط — CTF · مختبرات · تدقيق داخلي</span>
+    <h1>وكيل أمن سيبراني <span>ذاتي الحكم</span><br>يفهم سطح الهجوم، لا يكتفي بتشغيل أمر</h1>
+    <p class="lede">
+      Adi هو مساحة عمل أمنية مستقلة مستوحاة من فكرة "Claude Code، لكن للأمن السيبراني":
+      يبني نموذجًا معرفيًا دائمًا للهدف، يختار الأداة المناسبة وينفّذها داخل بيئة معزولة،
+      ثم يحوّل النتائج إلى فرضيات يتحقق منها بالأدلة — بدل تسليمك قائمة تنبيهات فاحص خام.
+    </p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://github.com/alanqoudif/Adi" target="_blank" rel="noopener">ابدأ من GitHub</a>
+      <a class="btn btn-ghost" href="#how">شاهد كيف يعمل ↓</a>
+    </div>
+    <p class="disclaimer">
+      Adi مخصّص حصريًا للتعليم الأمني، منصات CTF، المختبرات المعزولة، والأنظمة التي تملكها
+      أو لديك تفويض صريح باختبارها. لا يدعم أي استخدام ضد أهداف غير مصرَّح بها.
+    </p>
+  </section>
+
+  <section id="what" class="wrap">
+    <h2>ما هو Adi بالضبط؟</h2>
+    <p class="section-lede">
+      Adi ليس روبوت محادثة يقترح لك أوامر Kali، وليس واجهة فوق فاحص ثغرات جاهز.
+      هو عميل (Agent) يحتفظ بذاكرة دائمة عن الهدف — الأصول، الخدمات، التقنيات،
+      نقاط النهاية، الفرضيات، والأدلة — ويبني على هذه المعرفة قرارًا تلو الآخر.
+    </p>
+    <div class="grid">
+      <div class="card"><h3>🧠 نموذج معرفي دائم</h3><p>كل اكتشاف (منفذ مفتوح، خدمة، رأس HTTP) يُخزَّن في مخطط معرفي منظَّم للهدف، لا يُفقد بين الجلسات.</p></div>
+      <div class="card"><h3>🧩 تفكير بالقدرات لا بالأدوات</h3><p>Adi يقرر "أحتاج فحص خدمات" ثم يختار الأداة المتاحة الأنسب (مثل nmap)، لا العكس.</p></div>
+      <div class="card"><h3>🔒 تنفيذ معزول وآمن</h3><p>كل أداة تعمل داخل بيئة Docker معزولة بدون أي وصول لملفاتك الحساسة أو مفاتيحك.</p></div>
+      <div class="card"><h3>✅ فرضية ثم تحقق، لا تخمين</h3><p>تنبيه فاحص لا يصبح "ثغرة مؤكدة" تلقائيًا أبدًا — يمر أولًا بمسار فرضية → تحقق فعلي → دليل.</p></div>
+      <div class="card"><h3>🧭 سياق محدود للنموذج اللغوي</h3><p>لا تُرسَل قاعدة البيانات كاملة للنموذج؛ فقط ملخّص مركّز: الهدف، الأصول، الفرضيات النشطة، وما تبقّى من الميزانية.</p></div>
+      <div class="card"><h3>🛑 حدود صارمة للتنفيذ الذاتي</h3><p>ميزانية إجراءات، كشف تكرار، وإيقاف تلقائي عند تكرار الفشل — لا حلقات لا نهائية.</p></div>
+    </div>
+  </section>
+
+  <section id="how" class="wrap">
+    <h2>كيف تعمل الحلقة الذكية؟</h2>
+    <p class="section-lede">كل دورة تخطيط تمر بنفس المسار المحدَّد والقابل للتدقيق:</p>
+    <div class="pipeline">
+      <span class="step">بناء السياق</span><span class="arrow">←</span>
+      <span class="step">تخطيط (LLM)</span><span class="arrow">←</span>
+      <span class="step">تحقق من النطاق المصرَّح</span><span class="arrow">←</span>
+      <span class="step">تنفيذ الأداة</span><span class="arrow">←</span>
+      <span class="step">تحليل حتمي للنتيجة</span><span class="arrow">←</span>
+      <span class="step">تحديث الفرضيات</span><span class="arrow">←</span>
+      <span class="step">إعادة التخطيط</span>
+    </div>
+  </section>
+
+  <section id="usecases" class="wrap">
+    <h2>لمن صُمِّم Adi؟</h2>
+    <div class="usecases">
+      <div class="uc"><span class="tag">CTF</span><h3>مسابقات الاختراق</h3><p>يكتشف الخدمات، يبني فرضيات حول الثغرة المقصودة، ويشرح خطوات الوصول للعلَم.</p></div>
+      <div class="uc"><span class="tag">تعليم</span><h3>مختبرات جامعية</h3><p>وضع "تعليمي" يشرح كل قرار: لماذا اختار هذه الأداة، وماذا تعني نتيجتها.</p></div>
+      <div class="uc"><span class="tag">تدقيق</span><h3>بيئات Staging الداخلية</h3><p>نطاق صارم: نطاقات مسموحة، حسابات اختبار مصرَّحة، وحدود معدّل الطلبات.</p></div>
+      <div class="uc"><span class="tag">كود + تشغيل</span><h3>ربط الكود المصدري بالتشغيل الفعلي</h3><p>يربط نقطة نهاية API بالكود المصدري المسؤول عنها للتحقق من ثغرات التفويض.</p></div>
+    </div>
+  </section>
+
+  <section id="safety" class="wrap">
+    <h2>الأمان مبني في الكود، لا في التوثيق فقط</h2>
+    <div class="safety">
+      <p>Adi يرفض تقنيًا كل إجراء خارج النطاق المصرَّح به — القرار آلي وليس اجتهادًا من النموذج اللغوي.</p>
+      <ul>
+        <li>كل إجراء يمر عبر محرك تحقق من النطاق قبل أي تنفيذ فعلي.</li>
+        <li>تنفيذ الأدوات داخل حاوية معزولة بصلاحيات مُنزوعة بالكامل، بدون الوصول لمفاتيحك أو ملفاتك الشخصية.</li>
+        <li>لا حركات تخريبية، لا آليات استمرارية (Persistence)، لا تقنيات تخفٍّ أو تجاوز للكشف.</li>
+        <li>لا توسّع تلقائي للاختبار خارج الأصول المصرَّح بها حتى لو اكتُشفت عبر إعادة توجيه.</li>
+        <li>كلمات مرور حسابات الاختبار تُحال بمتغيرات بيئة فقط، ولا تظهر أبدًا في السجلات أو التقارير.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="faq" class="wrap">
+    <h2>الأسئلة الشائعة</h2>
+    <details>
+      <summary>هل يمكنني استخدام Adi على أي موقع أو جهاز؟</summary>
+      <p>لا. Adi مخصَّص حصرًا للأنظمة التي تملكها أو لديك تفويض كتابي صريح باختبارها، بالإضافة إلى منصات CTF والمختبرات التعليمية المعزولة. محرك النطاق يمنع تقنيًا أي محاولة اختبار خارج هذا الإطار.</p>
+    </details>
+    <details>
+      <summary>ما الفرق بين Adi وفاحص ثغرات عادي؟</summary>
+      <p>الفاحص العادي يعطيك قائمة تنبيهات خام. Adi يحتفظ بذاكرة دائمة عن الهدف، يبني فرضيات أمنية من هذه التنبيهات، ثم يتحقق منها فعليًا قبل اعتبارها نتيجة مؤكدة — ما يقلّل النتائج الإيجابية الكاذبة بشكل كبير.</p>
+    </details>
+    <details>
+      <summary>هل Adi يحتاج اتصالًا بنموذج لغوي ليعمل؟</summary>
+      <p>التنفيذ المباشر للأدوات الأمنية (مثل فحص المنافذ) يعمل بدون أي نموذج لغوي. أما وضع التخطيط الذاتي (Autonomous) فيحتاج مزوّد نموذج لغوي (Anthropic، أو أي واجهة متوافقة مع OpenAI مثل OpenRouter أو نموذج محلي).</p>
+    </details>
+    <details>
+      <summary>هل الكود مفتوح المصدر؟</summary>
+      <p>نعم، المشروع مفتوح على GitHub ويتطور على مراحل موثَّقة بوضوح: التشغيل الأساسي، حلقة العميل الذاتية، أدوات الويب، محرك التحقق من النتائج، وربط الكود المصدري بالتشغيل الفعلي.</p>
+    </details>
+    <details>
+      <summary>ما معنى اسم Adi؟</summary>
+      <p>الاسم مستوحى من عالم التشفير Adi Shamir، أحد مخترعي خوارزمية RSA وأحد أبرز الأسماء المؤسِّسة لعلم الأمن السيبراني الحديث.</p>
+    </details>
+  </section>
+
+  <section class="wrap">
+    <div class="final-cta">
+      <h2>جاهز تجرّب Adi على هدف مصرَّح به؟</h2>
+      <p class="section-lede" style="margin-inline:auto">ابدأ محليًا خلال دقائق، أو اطّلع على خارطة الطريق الكاملة في المستودع.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://github.com/alanqoudif/Adi" target="_blank" rel="noopener">فتح المستودع على GitHub</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Adi — وكيل أمن سيبراني ذاتي الحكم للاستخدام المصرَّح به فقط. ليس أداة للاستخدام ضد أنظمة غير مصرَّح باختبارها.</p>
+    <p><a href="https://github.com/alanqoudif/Adi" target="_blank" rel="noopener">GitHub</a> · <a href="/llms.txt">llms.txt</a> · <a href="/sitemap.xml">sitemap.xml</a></p>
+  </div>
+</footer>
+
+<!-- ===== JSON-LD: بيانات منظَّمة لمحركات البحث ومحركات الإجابة التوليدية (GEO) ===== -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Adi",
+  "applicationCategory": "SecurityApplication",
+  "operatingSystem": "Linux, macOS",
+  "description": "Adi هو وكيل أمن سيبراني ذاتي الحكم (autonomous security agent) يُجري اختبارات اختراق مصرَّح بها آليًا: يكتشف الأصول والخدمات، يبني فرضيات أمنية، ويتحقق منها بأدلة فعلية قبل اعتبارها نتيجة مؤكدة. مخصّص لمسابقات CTF والمختبرات التعليمية والأنظمة المصرَّح باختبارها فقط.",
+  "url": "https://useadi.dev/",
+  "codeRepository": "https://github.com/alanqoudif/Adi",
+  "license": "https://github.com/alanqoudif/Adi/blob/main/LICENSE",
+  "softwareHelp": "https://github.com/alanqoudif/Adi#readme",
+  "author": { "@type": "Organization", "name": "Adi Project" },
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "هل يمكن استخدام Adi على أي موقع أو جهاز؟",
+      "acceptedAnswer": { "@type": "Answer", "text": "لا. Adi مخصَّص حصرًا للأنظمة المملوكة للمستخدم أو المصرَّح له صراحة باختبارها، ومنصات CTF، والمختبرات التعليمية المعزولة. محرك النطاق في الكود يمنع تقنيًا أي اختبار خارج هذا الإطار." }
+    },
+    {
+      "@type": "Question",
+      "name": "ما الفرق بين Adi وفاحص الثغرات التقليدي؟",
+      "acceptedAnswer": { "@type": "Answer", "text": "فاحص الثغرات التقليدي يُخرج تنبيهات خام فقط. Adi يحوّل هذه التنبيهات إلى فرضيات أمنية صريحة ثم يتحقق منها فعليًا بأدلة قبل تصنيفها كنتيجة مؤكدة، ما يقلّل النتائج الإيجابية الكاذبة." }
+    },
+    {
+      "@type": "Question",
+      "name": "هل يحتاج Adi نموذجًا لغويًا ليعمل؟",
+      "acceptedAnswer": { "@type": "Answer", "text": "تشغيل الأدوات الأمنية المباشر يعمل بدون نموذج لغوي. أما وضع التخطيط الذاتي (autonomous) فيحتاج مزوّد نموذج لغوي متوافقًا مع Anthropic أو واجهة OpenAI المتوافقة مثل OpenRouter أو نموذج محلي." }
+    },
+    {
+      "@type": "Question",
+      "name": "من أين جاء اسم Adi؟",
+      "acceptedAnswer": { "@type": "Answer", "text": "الاسم مستوحى من عالم التشفير Adi Shamir، أحد مخترعي خوارزمية RSA وأحد مؤسسي علم الأمن السيبراني الحديث." }
+    }
+  ]
+}
+</script>
+</body>
+</html>
