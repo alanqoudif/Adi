@@ -1,0 +1,30 @@
+# Minimal Kali-based image for KAI's isolated tool-execution runtime.
+# Intentionally does not include every Kali package — only the tools KAI
+# has skills for (see skills/). Extend as new skills are added.
+#
+# NOTE: this image is not built or tested in this environment (no Docker
+# daemon available here) — verify it builds and runs before relying on it.
+FROM kalilinux/kali-rolling
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nmap \
+    whatweb \
+    ffuf \
+    feroxbuster \
+    nikto \
+    hydra \
+    gitleaks \
+    tcpdump \
+    tshark \
+    openssl \
+    smbclient \
+    ldap-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Non-root user: the runtime also drops all capabilities and sets
+# no-new-privileges at container-start time (see kai.runtime.docker_runtime).
+RUN useradd -m -u 1000 kai
+USER kai
+WORKDIR /workspace
+
+ENTRYPOINT []

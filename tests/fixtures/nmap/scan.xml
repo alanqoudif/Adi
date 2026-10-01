@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nmaprun scanner="nmap" args="nmap -sV -oX - --open 10.10.10.15">
+<host>
+<status state="up" reason="syn-ack"/>
+<address addr="10.10.10.15" addrtype="ipv4"/>
+<ports>
+<port protocol="tcp" portid="22">
+<state state="open" reason="syn-ack"/>
+<service name="ssh" product="OpenSSH" version="8.2p1" method="probed" conf="10"/>
+</port>
+<port protocol="tcp" portid="80">
+<state state="open" reason="syn-ack"/>
+<service name="http" product="nginx" version="1.18.0" method="probed" conf="10"/>
+</port>
+<port protocol="tcp" portid="3306">
+<state state="closed" reason="reset"/>
+<service name="mysql" method="table" conf="3"/>
+</port>
+</ports>
+</host>
+</nmaprun>

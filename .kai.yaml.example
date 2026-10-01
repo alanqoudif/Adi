@@ -1,0 +1,22 @@
+# Copy to .kai.yaml and adjust. All values here are safe defaults.
+
+provider:
+  type: anthropic
+  api_key_env: KAI_LLM_API_KEY
+  model: ${KAI_MODEL}
+
+runtime:
+  type: docker          # docker (default, isolated) | local (opt-in, unsandboxed) | mock (tests)
+  image: kai-kali:latest
+  allow_local: false
+
+agent:
+  max_actions: 150
+  max_consecutive_failures: 5
+
+execution:
+  concurrent_tools: 2
+
+ui:
+  show_reason_summaries: true
+  verbose_tool_output: false
