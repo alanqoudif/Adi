@@ -11,7 +11,7 @@ import json
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text, create_engine
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text, create_engine
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -52,6 +52,7 @@ class AssessmentRecord(Base):
     actions: Mapped[list[ActionRecord]] = relationship(back_populates="assessment")
     hypotheses: Mapped[list[HypothesisRecord]] = relationship(back_populates="assessment")
     findings: Mapped[list[FindingRecord]] = relationship(back_populates="assessment")
+    sessions: Mapped[list[SessionRecord]] = relationship(back_populates="assessment")
 
 
 class HostRecord(Base):
@@ -67,6 +68,7 @@ class HostRecord(Base):
 
     assessment: Mapped[AssessmentRecord] = relationship(back_populates="hosts")
     services: Mapped[list[ServiceRecord]] = relationship(back_populates="host")
+    endpoints: Mapped[list[EndpointRecord]] = relationship(back_populates="host")
 
 
 class ServiceRecord(Base):
@@ -104,6 +106,66 @@ class ObservationRecord(Base):
     @property
     def value(self):
         return json.loads(self.value_json)
+
+
+class EndpointRecord(Base):
+    """A web application route: a path plus the HTTP methods observed on
+    it, whether it appears to require authentication, and (optionally) the
+    technology serving it. Parameters live in `ParameterRecord`, one row
+    per (endpoint, parameter)."""
+
+    __tablename__ = "endpoint"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    host_id: Mapped[str] = mapped_column(ForeignKey("host.id"))
+    path: Mapped[str] = mapped_column(String)  # e.g. "/api/orders"
+    methods_json: Mapped[str] = mapped_column(Text, default="[]")  # e.g. ["GET", "POST"]
+    requires_auth: Mapped[bool] = mapped_column(Boolean, default=False)
+    technology: Mapped[str] = mapped_column(String, default="")
+    source: Mapped[str] = mapped_column(String, default="unknown")
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    host: Mapped[HostRecord] = relationship(back_populates="endpoints")
+    parameters: Mapped[list[ParameterRecord]] = relationship(back_populates="endpoint")
+
+
+class ParameterRecord(Base):
+    __tablename__ = "parameter"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    endpoint_id: Mapped[str] = mapped_column(ForeignKey("endpoint.id"))
+    name: Mapped[str] = mapped_column(String)
+    location: Mapped[str] = mapped_column(String, default="body")  # body | query | path | header
+    required: Mapped[bool] = mapped_column(Boolean, default=True)
+    source: Mapped[str] = mapped_column(String, default="unknown")
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    endpoint: Mapped[EndpointRecord] = relationship(back_populates="parameters")
+
+
+class SessionRecord(Base):
+    """A named identity the agent tests with — "anonymous" always exists by
+    default; others correspond to `Scope.test_accounts` entries. This is
+    deliberately NOT the full HTTP cookie/request-response workspace (that
+    is Phase 3) — only which identities exist and whether each is currently
+    authenticated."""
+
+    __tablename__ = "session"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    assessment_id: Mapped[str] = mapped_column(ForeignKey("assessment.id"))
+    name: Mapped[str] = mapped_column(String)  # e.g. "anonymous", "user_a", "admin"
+    role: Mapped[str] = mapped_column(String, default="")
+    authenticated: Mapped[bool] = mapped_column(Boolean, default=False)
+    test_account_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    assessment: Mapped[AssessmentRecord] = relationship(back_populates="sessions")
 
 
 class ActionRecord(Base):

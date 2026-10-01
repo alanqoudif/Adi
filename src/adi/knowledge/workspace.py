@@ -17,11 +17,14 @@ from sqlalchemy.orm import Session, sessionmaker
 from adi.knowledge.db import (
     ActionRecord,
     AssessmentRecord,
+    EndpointRecord,
     FindingRecord,
     HostRecord,
     HypothesisRecord,
     ObservationRecord,
+    ParameterRecord,
     ServiceRecord,
+    SessionRecord,
     make_session_factory,
     new_id,
 )
@@ -51,6 +54,10 @@ class Workspace:
                 scope_json=scope.model_dump_json(),
             )
             session.add(record)
+            session.add(SessionRecord(
+                id=new_id("sess"), assessment_id=assessment_id, name="anonymous",
+                role="anonymous", authenticated=False,
+            ))
             session.commit()
         return cls(session_factory, assessment_id)
 
@@ -162,6 +169,129 @@ class Workspace:
             session.expunge_all()
             return list(rows)
 
+    # -- endpoints / parameters ------------------------------------------------
+
+    def upsert_endpoint(
+        self,
+        host_address: str,
+        path: str,
+        methods: list[str] | None = None,
+        requires_auth: bool = False,
+        technology: str = "",
+        source: str = "unknown",
+        confidence: float = 1.0,
+    ) -> str:
+        host_id = self.upsert_host(host_address, source=source, confidence=confidence)
+        with self._session_factory() as session:
+            existing = session.execute(
+                select(EndpointRecord).where(
+                    EndpointRecord.host_id == host_id, EndpointRecord.path == path,
+                )
+            ).scalar_one_or_none()
+            if existing:
+                merged_methods = sorted(set(json.loads(existing.methods_json)) | set(methods or []))
+                existing.methods_json = json.dumps(merged_methods)
+                existing.requires_auth = existing.requires_auth or requires_auth
+                existing.technology = technology or existing.technology
+                session.commit()
+                return existing.id
+            record = EndpointRecord(
+                id=new_id("ep"),
+                host_id=host_id,
+                path=path,
+                methods_json=json.dumps(sorted(set(methods or []))),
+                requires_auth=requires_auth,
+                technology=technology,
+                source=source,
+                confidence=confidence,
+            )
+            session.add(record)
+            session.commit()
+            return record.id
+
+    def upsert_parameter(
+        self, endpoint_id: str, name: str, location: str = "body",
+        required: bool = True, source: str = "unknown", confidence: float = 1.0,
+    ) -> str:
+        with self._session_factory() as session:
+            existing = session.execute(
+                select(ParameterRecord).where(
+                    ParameterRecord.endpoint_id == endpoint_id,
+                    ParameterRecord.name == name,
+                    ParameterRecord.location == location,
+                )
+            ).scalar_one_or_none()
+            if existing:
+                existing.required = required
+                session.commit()
+                return existing.id
+            record = ParameterRecord(
+                id=new_id("param"), endpoint_id=endpoint_id, name=name,
+                location=location, required=required, source=source, confidence=confidence,
+            )
+            session.add(record)
+            session.commit()
+            return record.id
+
+    def list_endpoints(self) -> list[EndpointRecord]:
+        with self._session_factory() as session:
+            rows = session.execute(
+                select(EndpointRecord)
+                .join(HostRecord)
+                .where(HostRecord.assessment_id == self.assessment_id)
+            ).scalars().all()
+            session.expunge_all()
+            return list(rows)
+
+    def list_parameters(self, endpoint_id: str | None = None) -> list[ParameterRecord]:
+        with self._session_factory() as session:
+            stmt = select(ParameterRecord).join(EndpointRecord).join(HostRecord).where(
+                HostRecord.assessment_id == self.assessment_id
+            )
+            if endpoint_id is not None:
+                stmt = stmt.where(ParameterRecord.endpoint_id == endpoint_id)
+            rows = session.execute(stmt).scalars().all()
+            session.expunge_all()
+            return list(rows)
+
+    # -- sessions / identities --------------------------------------------------
+
+    def get_or_create_session(
+        self, name: str, role: str = "", test_account_name: str | None = None,
+    ) -> str:
+        with self._session_factory() as session:
+            existing = session.execute(
+                select(SessionRecord).where(
+                    SessionRecord.assessment_id == self.assessment_id,
+                    SessionRecord.name == name,
+                )
+            ).scalar_one_or_none()
+            if existing:
+                return existing.id
+            record = SessionRecord(
+                id=new_id("sess"), assessment_id=self.assessment_id, name=name,
+                role=role, test_account_name=test_account_name,
+            )
+            session.add(record)
+            session.commit()
+            return record.id
+
+    def set_session_authenticated(self, name: str, authenticated: bool) -> None:
+        session_id = self.get_or_create_session(name)
+        with self._session_factory() as session:
+            record = session.get(SessionRecord, session_id)
+            if record:
+                record.authenticated = authenticated
+                session.commit()
+
+    def list_sessions(self) -> list[SessionRecord]:
+        with self._session_factory() as session:
+            rows = session.execute(
+                select(SessionRecord).where(SessionRecord.assessment_id == self.assessment_id)
+            ).scalars().all()
+            session.expunge_all()
+            return list(rows)
+
     # -- observations ---------------------------------------------------------
 
     def record_observation(self, observation: Observation) -> str:
@@ -196,8 +326,8 @@ class Workspace:
             return list(rows)
 
     def _apply_observation(self, observation: Observation) -> None:
-        """Fold an observation into typed Host/Service state. Deterministic,
-        no LLM involved — see spec section 19/26."""
+        """Fold an observation into typed Host/Service/Endpoint/Session
+        state. Deterministic, no LLM involved — see spec section 19/26."""
         if observation.type == ObservationType.HOST_UP:
             self.upsert_host(observation.subject, source=observation.source,
                               confidence=observation.confidence)
@@ -218,6 +348,39 @@ class Workspace:
                 source=observation.source,
                 confidence=observation.confidence,
             )
+        elif observation.type == ObservationType.WEB_ENDPOINT:
+            host = observation.value.get("host", observation.subject)
+            self.upsert_endpoint(
+                host_address=host,
+                path=observation.value.get("path", observation.subject),
+                methods=observation.value.get("methods", []),
+                requires_auth=observation.value.get("requires_auth", False),
+                technology=observation.value.get("technology", ""),
+                source=observation.source,
+                confidence=observation.confidence,
+            )
+        elif observation.type == ObservationType.ENDPOINT_PARAMETER:
+            endpoint_id = observation.value.get("endpoint_id")
+            if endpoint_id:
+                self.upsert_parameter(
+                    endpoint_id=endpoint_id,
+                    name=observation.value.get("name", observation.subject),
+                    location=observation.value.get("location", "body"),
+                    required=observation.value.get("required", True),
+                    source=observation.source,
+                    confidence=observation.confidence,
+                )
+        elif observation.type == ObservationType.SESSION_OBSERVED:
+            self.get_or_create_session(
+                name=observation.value.get("name", observation.subject),
+                role=observation.value.get("role", ""),
+                test_account_name=observation.value.get("test_account_name"),
+            )
+            if "authenticated" in observation.value:
+                self.set_session_authenticated(
+                    observation.value.get("name", observation.subject),
+                    observation.value["authenticated"],
+                )
 
     # -- actions (audit trail) ------------------------------------------------
 

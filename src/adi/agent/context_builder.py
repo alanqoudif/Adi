@@ -7,6 +7,8 @@ hypotheses, recent actions, and available capabilities are included.
 
 from __future__ import annotations
 
+import json
+
 from pydantic import BaseModel, Field
 
 from adi.agent.reasoner import HypothesisEngine
@@ -22,6 +24,17 @@ MAX_RECENT_ACTIONS = 10
 class AssetSummary(BaseModel):
     address: str
     open_ports: list[int] = Field(default_factory=list)
+
+
+class EndpointSummary(BaseModel):
+    path: str
+    methods: list[str] = Field(default_factory=list)
+    requires_auth: bool = False
+
+
+class SessionSummary(BaseModel):
+    name: str
+    authenticated: bool = False
 
 
 class ActionSummary(BaseModel):
@@ -40,6 +53,8 @@ class PlanningContext(BaseModel):
     scope_mode: str
     targets: list[str]
     assets: list[AssetSummary]
+    endpoints: list[EndpointSummary] = Field(default_factory=list)
+    sessions: list[SessionSummary] = Field(default_factory=list)
     active_hypotheses: list[Hypothesis]
     rejected_hypothesis_titles: list[str]
     recent_actions: list[ActionSummary]
@@ -67,6 +82,19 @@ class PlanningContext(BaseModel):
                 lines.append(f"  - {asset.address}: open ports [{ports}]")
         else:
             lines.append("  (none discovered yet)")
+
+        if self.endpoints:
+            lines.append("\nKnown web endpoints:")
+            for ep in self.endpoints:
+                methods = "/".join(ep.methods) or "?"
+                auth = " [requires auth]" if ep.requires_auth else ""
+                lines.append(f"  - {methods} {ep.path}{auth}")
+
+        if self.sessions:
+            lines.append("\nTest identities/sessions:")
+            for s in self.sessions:
+                state = "authenticated" if s.authenticated else "unauthenticated"
+                lines.append(f"  - {s.name} ({state})")
 
         lines.append("\nActive hypotheses:")
         if self.active_hypotheses:
@@ -106,6 +134,8 @@ class ContextBuilder:
     def build(self, *, consecutive_failures: int = 0) -> PlanningContext:
         hosts = self.workspace.list_hosts()
         services = self.workspace.list_services()
+        endpoints = self.workspace.list_endpoints()
+        sessions = self.workspace.list_sessions()
         actions = self.workspace.list_actions()
         hyp_engine = HypothesisEngine(self.workspace)
 
@@ -115,6 +145,15 @@ class ContextBuilder:
                 open_ports=sorted(s.port for s in services if s.host_id == h.id),
             )
             for h in hosts
+        ]
+
+        endpoint_summaries = [
+            EndpointSummary(path=ep.path, methods=json.loads(ep.methods_json),
+                             requires_auth=ep.requires_auth)
+            for ep in endpoints
+        ]
+        session_summaries = [
+            SessionSummary(name=s.name, authenticated=s.authenticated) for s in sessions
         ]
 
         recent_actions = [
@@ -140,6 +179,8 @@ class ContextBuilder:
             scope_mode=self.scope.mode.value,
             targets=self.scope.targets,
             assets=assets,
+            endpoints=endpoint_summaries,
+            sessions=session_summaries,
             active_hypotheses=active,
             rejected_hypothesis_titles=rejected_titles,
             recent_actions=recent_actions,

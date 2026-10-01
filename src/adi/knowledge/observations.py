@@ -22,6 +22,8 @@ class ObservationType(str, Enum):
     HTTP_HEADER = "http_header"
     TECHNOLOGY_FINGERPRINT = "technology_fingerprint"
     WEB_ENDPOINT = "web_endpoint"
+    ENDPOINT_PARAMETER = "endpoint_parameter"
+    SESSION_OBSERVED = "session_observed"
     SCANNER_ALERT = "scanner_alert"
     SOURCE_PATTERN = "source_pattern"
     TOOL_ERROR = "tool_error"

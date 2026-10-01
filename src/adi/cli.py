@@ -229,6 +229,8 @@ def status(assessment_id: str = typer.Argument(...)):
     scope = assessment.workspace.load_scope()
     hosts = assessment.workspace.list_hosts()
     services = assessment.workspace.list_services()
+    endpoints = assessment.workspace.list_endpoints()
+    sessions = assessment.workspace.list_sessions()
     actions = assessment.workspace.list_actions()
     findings = assessment.workspace.list_findings()
     hyp_engine = HypothesisEngine(assessment.workspace)
@@ -241,6 +243,8 @@ def status(assessment_id: str = typer.Argument(...)):
     console.print(f"Actions used:  {len(actions)} / {scope.max_actions}")
     console.print(f"Assets:        {len(hosts)}")
     console.print(f"Services:      {len(services)}")
+    console.print(f"Endpoints:     {len(endpoints)}")
+    console.print(f"Sessions:      {', '.join(s.name for s in sessions) or 'none'}")
     console.print(f"Hypotheses:    {len(active)} active, {len(rejected)} rejected")
     confirmed = [f for f in findings if f.status == "confirmed"]
     console.print(f"Confirmed:     {len(confirmed)}")
