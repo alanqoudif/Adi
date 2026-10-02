@@ -44,10 +44,68 @@ Legend: NOT STARTED / IN PROGRESS / IMPLEMENTED / TESTED / ENV BLOCKED
 - Natural-language scope interpreter (`adi.product.nlu`) — TESTED
   (deterministic regex matcher, not LLM-driven — scope changes stay
   reproducible/auditable and immune to prompt injection from tool output)
-- Textual TUI — NOT STARTED
-- Command console (`/run`, `/tool-run`) + command preview — NOT STARTED
-  (CLI already has `run-capability`/`run-tool`; plain shell needs the same
-  surfaced as in-shell slash commands with autocomplete + preview)
+- Textual TUI (`adi.product.tui.app.AdiApp`) — TESTED headlessly (Textual's
+  `run_test()` pilot: launches, renders, accepts real input events, drives
+  real Core; see `tests/unit/test_tui.py`). Single main screen (chat +
+  scope panel); findings/evidence/hypotheses/attack-surface/source still
+  render as text in the chat log via slash commands rather than as
+  dedicated scrollable widgets/panes — see "remaining TUI depth" below.
+  Manual real-terminal verification NOT performed in this sandbox (no TTY
+  available to the agent) — see Environmental limitations.
+- Expert command console (`adi.product.console.ExpertConsole`) + sanitized
+  command preview + approval integration — TESTED. `/run`/`/tool-run` go
+  through the exact same `ScopeEngine`/`ToolExecutor` path as autonomous
+  execution; "approve once" for the one Core-supported elevated-approval
+  mechanism (`audit_credentials` + `approval_mode`), revoked immediately
+  after use.
+- Tool/capability browser (`/tools /tool /capabilities /capability`) —
+  TESTED, reads live from `ToolRegistry` (same data `adi tools`/
+  `adi capabilities` already expose).
+- Attack-surface view (`/attack-surface`) — TESTED (hierarchical
+  hosts/services/endpoints + source routes text rendering).
+- Source intelligence view (`/source`) — TESTED (languages/frameworks/
+  routes/dependencies summary). Deep source browsing ("where is this
+  endpoint implemented", "show authorization code for this finding") not
+  yet wired — Core's `adi.source.retrieval` bounded-retrieval exists and
+  is unused by the Product layer so far.
+- Findings/hypotheses/evidence text UX (`/findings /hypotheses
+  /evidence`) — TESTED. No evidence-trace graph view
+  (finding→hypothesis→validation→observations→tool/HTTP/source
+  evidence→scope decision) yet — Core has all the linked IDs
+  (`Finding.hypothesis_id`, `evidence_ids_json`, etc.); only the
+  traversal/rendering is missing.
+- First-run setup wizard — TESTED (`tests/unit/test_plain_shell.py::
+  test_first_run_wizard_adds_provider_profile`), triggered automatically
+  by `adi shell --plain` when no profile is configured.
+- Doctor expansion (Product Shell section: keyring backend, configured
+  profiles, session count) — TESTED.
+- Crash/interruption recovery — TESTED (`Workspace.
+  mark_interrupted_actions`, `tests/unit/test_crash_recovery.py`).
+- Provider failure recovery — TESTED for the "profile fails to resolve"
+  case (`tests/unit/test_plain_shell.py::
+  test_provider_failure_then_switch_and_continue`); a live network outage
+  against a real remote provider was not exercised (no outbound network
+  in this sandbox).
+- Terminal escape/control-sequence sanitization — TESTED
+  (`adi.product.terminal_safety`, applied in `PlainShell._print` before
+  every render).
+- Secret-redaction regression — TESTED
+  (`tests/unit/test_security_regression.py::
+  test_redaction_strips_known_secrets_from_plain_shell_output`).
+- Privacy-routing regression — TESTED
+  (`test_privacy_routing_cannot_be_bypassed_by_role_name`).
+- NO_COLOR — TESTED (`Console(no_color=...)` in `PlainShell.__init__`).
+- Full headless local acceptance test — TESTED
+  (`tests/integration/test_product_shell_acceptance.py`: fixture provider
+  + fixture target, through `ProductController`/`ExpertConsole`, covering
+  new-assessment → autonomous run → one confirmed finding with an
+  evidence trace + one rejected hypothesis → report generation → process
+  "restart" → resume by session name → identical state restored).
+- Documentation: `docs/tui.md`, `docs/providers.md`,
+  `docs/privacy-routing.md`, `docs/sessions.md`,
+  `docs/interactive-security.md`, `docs/expert-mode.md`,
+  `docs/configuration.md` — DONE. README now leads with the product
+  workflow — DONE.
 - Command console (`/run`, `/tool-run`) reusing Scope/Risk/Resolver — NOT STARTED
 - Findings/hypotheses/evidence/attack-surface/source browsers (TUI) — NOT STARTED
 - Approvals UI — NOT STARTED
@@ -73,45 +131,56 @@ Legend: NOT STARTED / IN PROGRESS / IMPLEMENTED / TESTED / ENV BLOCKED
 10. Docs + full acceptance test
 
 ## Next task (continuation pointer)
-Done so far (commits `374a54e`, `b68c16a`): events, ModelManager/providers/
-credentials/privacy-routing, SessionRegistry, ProductController (real
-vertical slice through Assessment/Orchestrator), plain shell with slash
-commands + NL scope proposals. 281 passed, 1 skipped; Core untouched.
+Commits so far: `374a54e` (events/ModelManager/controller), `b68c16a`
+(plain shell), `346fd0f` (status doc), `96ad1ba` (expert console/TUI/
+terminal safety/crash recovery), `d8a09be` (first-run wizard/doctor/
+security regression), `f74faf1` (controller bugfix + full acceptance
+test), plus this commit (docs/README + provider-failure-recovery test).
+309 passed, 1 skipped (full suite, last background run); Core untouched.
 
-Next, in dependency order:
-1. **Command console + command preview** in `plain_shell.py`: `/run
-   <capability> <target> [params]` and `/tool-run <tool> ...` routed
-   through `assessment.executor.run_capability` / `.run` (same path as
-   `adi run-capability`/`run-tool` in `cli.py`) with a sanitized preview
-   (capability, provider tool, runtime, budget, rate — no secrets) and
-   explicit approve/reject before any elevated/approval-required call.
-   Needs `ScopeEngine`'s existing approval-required signal surfaced as a
-   typed event (`APPROVAL_REQUIRED` already exists on the bus; wire a
-   confirm prompt consuming it instead of auto-blocking).
-2. **Tool/capability browser** (`/tools`, `/tool <name>`, `/capabilities`,
-   `/capability <name>`) reading `ToolRegistry`/executor's resolver
-   directly (same data `adi tools`/`adi capabilities` already expose in
-   `cli.py` — reuse, don't reimplement).
-3. **Attack surface / source views** (`/attack-surface`, `/source`) over
-   `Workspace.list_hosts/list_services/list_endpoints` + `load_source()`.
-4. **Approvals view** (`/approvals`) + first-run wizard (`adi` with no
-   provider configured walks through ModelManager.add_profile +
-   test_connection).
-5. **Textual TUI** (`src/adi/product/tui/`) as a second consumer of
-   `ProductController`/`EventBus` — do not duplicate controller logic.
-6. **Crash recovery**: mark in-flight `ActionRecord`s `INTERRUPTED` on
-   `Assessment.resume` if `status == "running"` at process start.
-7. Doctor expansion, docs (tui/providers/privacy-routing/sessions/
-   interactive-security/configuration/expert-mode), full deterministic
-   local acceptance test, security regression tests (model cannot
-   self-approve/expand scope/enable auth-testing — partially provable
-   already: `update_scope_fields` is never called from `_drive()`/planner
-   path, only from operator-confirmed `plain_shell` input).
+Remaining, in priority order:
+1. **Evidence-trace view**: a `/trace <finding-id>` command walking
+   finding → hypothesis → validation actions → observations → tool/HTTP/
+   source evidence → scope decision, using IDs Core already persists
+   (`Finding.hypothesis_id`, `evidence_ids_json`, `Hypothesis.
+   supporting_observation_ids_json`, `ValidationActionRecord`). No new
+   Core state needed — purely a Product-layer traversal + renderer.
+2. **Explainability** (`why did you run this tool? / why High? / why
+   rejected? / why not Hydra?`): a small deterministic answer-builder
+   reading the same persisted state (`ActionRecord.reason_summary`,
+   `ActionRecord.scope_reason`, `CriticReviewRecord`, `ToolRegistry`
+   fallback order) — explicitly NOT an LLM call per spec ("do not invent
+   hidden chain-of-thought").
+3. **Deep source browsing** from chat ("where is this endpoint
+   implemented?"): wire `adi.source.retrieval`'s bounded retrieval into a
+   `/source-search <query>` or similar, reusing the existing CLI's
+   `source-search` logic.
+4. **Dedicated TUI panes** for findings/hypotheses/evidence/attack-surface
+   (currently rendered as text in the chat log via slash commands, which
+   satisfies "browsable" but not "a navigable widget/pane with its own
+   scroll/selection") — add `Screen` subclasses or a tabbed container,
+   still reading through the same `ExpertConsole`/`Workspace` calls.
+5. **Command palette parity**: Textual's built-in `Ctrl+P` palette
+   (`App.COMMANDS`) is enabled but not populated with Adi-specific
+   actions (New assessment, Resume, Switch model, ...) — add a
+   `Provider`/`Hits` implementation per Textual's command-palette API.
+6. **`/settings` with origin tracking** (assessment vs. project vs.
+   global vs. default) — `docs/configuration.md` documents the current
+   per-surface state; a unified view is not built.
+7. Manual real-terminal verification of the TUI (this sandbox has no
+   TTY attached to the agent) — ask the user to run `adi shell` and
+   report back, or verify in an environment with one.
+8. Ruff lint pass (not yet run in this session) and a final full-suite
+   run immediately before declaring Definition of Done satisfied.
 
-Files: `src/adi/product/{events,credentials,models,sessions,controller,
-nlu,plain_shell}.py`, `tests/unit/test_product_controller.py`,
-`tests/unit/test_plain_shell.py`. `Workspace.update_scope` added to
-`src/adi/knowledge/workspace.py` (minimal, additive).
+Files added/changed this pass: `src/adi/product/console.py`,
+`src/adi/product/terminal_safety.py`, `src/adi/product/tui/app.py`,
+`src/adi/knowledge/workspace.py` (`mark_interrupted_actions`), `docs/
+{tui,providers,privacy-routing,sessions,interactive-security,
+expert-mode,configuration}.md`, `README.md`. Tests: `test_expert_console.py`,
+`test_terminal_safety.py`, `test_tui.py`, `test_crash_recovery.py`,
+`test_security_regression.py`, `test_doctor_product.py`,
+`test_product_shell_acceptance.py` (integration).
 
 ## Environmental limitations encountered
 - OS keyring backend not exercised live in this sandboxed dev environment

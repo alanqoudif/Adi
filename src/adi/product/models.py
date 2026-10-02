@@ -18,9 +18,8 @@ extend across arbitrary user-defined profiles instead of only `.adi.yaml`.
 
 from __future__ import annotations
 
-import json
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -129,7 +128,7 @@ class ModelManager:
         if self.path.exists():
             try:
                 return ProductStore.model_validate_json(self.path.read_text())
-            except Exception:
+            except Exception:  # noqa: BLE001,S110 - best-effort probe/fallback, never fatal
                 pass
         return ProductStore()
 
@@ -210,7 +209,7 @@ class ModelManager:
 
     # -- connection testing / discovery ----------------------------------
 
-    async def test_connection(self, profile: ProviderProfile) -> "ConnectionTestResult":
+    async def test_connection(self, profile: ProviderProfile) -> ConnectionTestResult:
         start = time.monotonic()
         try:
             provider = build_llm_provider(profile)
@@ -222,7 +221,7 @@ class ModelManager:
             return ConnectionTestResult(
                 ok=True, latency_ms=(time.monotonic() - start) * 1000
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - connection probe must never raise
             return ConnectionTestResult(ok=False, error=str(exc))
 
     async def list_models(self, profile: ProviderProfile) -> list[str]:
@@ -247,7 +246,7 @@ class ModelManager:
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
                 body = response.json()
-        except Exception:
+        except Exception:  # noqa: BLE001 - best-effort model discovery probe
             return []
         data = body.get("data") if isinstance(body, dict) else None
         if not isinstance(data, list):

@@ -29,7 +29,7 @@ try:
     import keyring as _keyring
 
     _KEYRING_AVAILABLE = True
-except Exception:  # pragma: no cover - import failure path
+except Exception:  # noqa: BLE001 - pragma: no cover - import failure path
     _KEYRING_AVAILABLE = False
 
 
@@ -39,7 +39,7 @@ def keyring_available() -> bool:
     try:
         backend = _keyring.get_keyring()
         return backend is not None and "fail" not in type(backend).__name__.lower()
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort probe/fallback, never fatal
         return False
 
 
@@ -55,7 +55,7 @@ def _fallback_read() -> dict[str, str]:
         return {}
     try:
         return json.loads(path.read_text())
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort probe/fallback, never fatal
         return {}
 
 
@@ -89,7 +89,7 @@ def get_secret(profile_name: str, credential_ref: str | None) -> str | None:
         if keyring_available():
             try:
                 return _keyring.get_password(_SERVICE_NAME, profile_name)
-            except Exception:
+            except Exception:  # noqa: BLE001 - best-effort probe/fallback, never fatal
                 return None
         return _fallback_read().get(profile_name)
     return None
@@ -99,7 +99,7 @@ def delete_secret(profile_name: str) -> None:
     if keyring_available():
         try:
             _keyring.delete_password(_SERVICE_NAME, profile_name)
-        except Exception:
+        except Exception:  # noqa: BLE001,S110 - best-effort probe/fallback, never fatal
             pass
     data = _fallback_read()
     if profile_name in data:

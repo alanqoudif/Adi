@@ -66,7 +66,7 @@ class PlainShell:
 
     def __init__(
         self, config: AdiConfig, project_root: Path | None = None,
-        output_sink: "Callable[[str], None] | None" = None,
+        output_sink: Callable[[str], None] | None = None,
     ):
         self.config = config
         self.project_root = project_root or Path.cwd()
@@ -118,7 +118,7 @@ class PlainShell:
                 break
             try:
                 should_exit = await self._handle(line)
-            except Exception as exc:  # user-visible errors must stay concise
+            except Exception as exc:  # noqa: BLE001 - user-visible errors must stay concise
                 self._print(f"[red]Error:[/red] {exc}")
                 continue
             if should_exit:
@@ -258,6 +258,8 @@ class PlainShell:
             self._print("Paused — no new actions will be scheduled.")
         elif cmd == "/continue":
             await self.controller.continue_()
+            if self.controller.assessment is not None:
+                await self.controller.start()  # no-op if already running
             self._print("Continuing.")
         elif cmd == "/stop":
             await self.controller.stop()
@@ -488,7 +490,7 @@ class PlainShell:
 def _fmt_ts(ts: float) -> str:
     import datetime
 
-    return datetime.datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M")
+    return datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc).strftime("%Y-%m-%d %H:%M")
 
 
 def _render_event(event: Event, *, teach: bool, expert: bool) -> str | None:

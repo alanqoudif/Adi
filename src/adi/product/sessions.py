@@ -53,7 +53,7 @@ class SessionRegistry:
         if self.path.exists():
             try:
                 return SessionStore.model_validate_json(self.path.read_text())
-            except Exception:
+            except Exception:  # noqa: BLE001,S110 - corrupt/missing session store falls back to empty
                 pass
         return SessionStore()
 

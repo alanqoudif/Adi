@@ -23,8 +23,7 @@ again immediately after use ("approve once").
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
 from adi.actions import ActionType, PlannedAction, RiskLevel
 from adi.assessment import Assessment

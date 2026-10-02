@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 from adi.product.terminal_safety import sanitize_for_terminal
 
 

@@ -8,11 +8,12 @@ same real Core integration (Assessment/Orchestrator/ScopeEngine/...).
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal
 from textual.widgets import Footer, Header, Input, RichLog, Static
 
 from adi.config.models import AdiConfig
@@ -32,14 +33,14 @@ class ScopePanel(Static):
         else:
             scope = assessment.workspace.load_scope()
             ws = assessment.workspace
-            lines.append(f"[bold]TARGET[/bold]")
+            lines.append("[bold]TARGET[/bold]")
             lines.append(", ".join(scope.targets) or "(none)")
             lines.append("")
-            lines.append(f"[bold]SCOPE[/bold]")
+            lines.append("[bold]SCOPE[/bold]")
             lines.append(f"Auth testing  {'on' if scope.permissions.authentication_testing else 'off'}")
             lines.append(f"Discovery     {'on' if scope.permissions.discovery else 'off'}")
             lines.append("")
-            lines.append(f"[bold]FINDINGS[/bold]")
+            lines.append("[bold]FINDINGS[/bold]")
             findings = ws.list_findings()
             by_sev: dict[str, int] = {}
             for f in findings:
@@ -49,11 +50,11 @@ class ScopePanel(Static):
             for sev, count in by_sev.items():
                 lines.append(f"{sev:<10} {count}")
             lines.append("")
-            lines.append(f"[bold]MODEL[/bold]")
+            lines.append("[bold]MODEL[/bold]")
             active = shell.controller.models.active_profile()
             lines.append(active.name if active else "(none configured)")
             lines.append("")
-            lines.append(f"[bold]STATE[/bold]")
+            lines.append("[bold]STATE[/bold]")
             lines.append(shell.controller.state)
         self.update("\n".join(lines))
 
@@ -72,7 +73,7 @@ class AdiApp(App):
     #input { dock: bottom; }
     """
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[Binding]] = [
         Binding("ctrl+f", "show_findings", "Findings"),
         Binding("ctrl+e", "show_evidence", "Evidence"),
         Binding("ctrl+s", "show_scope", "Scope"),
@@ -129,7 +130,7 @@ class AdiApp(App):
             return
         try:
             await self.shell._handle(line)
-        except Exception as exc:  # the TUI must never crash on a bad command
+        except Exception as exc:  # noqa: BLE001 - the TUI must never crash on a bad command
             self._write_line(f"[red]Error:[/red] {exc}")
         self._refresh_side()
 

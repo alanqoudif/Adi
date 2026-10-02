@@ -90,6 +90,6 @@ class EventBus:
                 result = listener(event)
                 if result is not None and hasattr(result, "__await__"):
                     await result
-            except Exception:
+            except Exception:  # noqa: BLE001,S112 - best-effort probe/fallback, never fatal
                 continue
         return event

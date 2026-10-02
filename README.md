@@ -1,8 +1,9 @@
-# Adi — Autonomous Security Assessment Workspace
+# Adi — AI Security Workbench for the Terminal
 
-Adi is an agentic security workspace for **authorized** testing: CTFs,
-university labs, intentionally vulnerable applications, internal staging
-systems, and infrastructure you own or are explicitly authorized to assess.
+Adi is an AI-assisted cybersecurity workbench for **authorized** testing:
+CTFs, university labs, intentionally vulnerable applications, internal
+staging systems, and infrastructure you own or are explicitly authorized
+to assess.
 
 It is not a chatbot, a command generator, or a dashboard over a few Kali
 commands. The design goal is: Adi understands an attack surface the way
@@ -10,6 +11,54 @@ Claude Code understands a codebase — it maintains a persistent, typed model
 of a target, reasons about it, chooses and runs real security tools inside
 an isolated runtime, and treats scanner output as evidence to be validated,
 not as a finding.
+
+## Day to day: `cd project && adi shell`
+
+```bash
+cd your-project
+adi shell            # Textual TUI — or: adi shell --plain / adi --plain
+```
+
+First run walks you through picking an AI provider (Anthropic, OpenAI,
+OpenRouter, Ollama, vLLM, LM Studio, or any OpenAI-compatible endpoint —
+local models are first-class, no vendor lock-in) and confirms the
+connection. Then you just talk to it:
+
+```
+> Assess this application and focus on authorization.
+✓ enumerate_services — 3 services
+✓ feroxbuster — 17 endpoints
+◉ validating H-004 — object authorization
+! ADI-F-001 confirmed — Broken Object Authorization · High
+> show me the evidence for ADI-F-001
+> generate the report
+```
+
+Everything it does — discovery, tool selection, validation, findings — is
+typed, scoped, and auditable; the model never gets raw shell access (see
+[docs/interactive-security.md](docs/interactive-security.md)). Experts can
+drop into the same scope/risk-checked execution path explicitly with
+`/run <capability> <target>` or `/tool-run <tool> <target>` (preview +
+confirm before anything elevated runs — see
+[docs/expert-mode.md](docs/expert-mode.md)).
+
+Multiple AI provider profiles, live model switching, per-role routing
+(planner/critic/code_analyst/reporter), and privacy routing that blocks
+source code/raw evidence from reaching a remote model by default are all
+built in — see [docs/providers.md](docs/providers.md) and
+[docs/privacy-routing.md](docs/privacy-routing.md). Sessions are
+human-readable and resumable (`/sessions`, `/resume <name>`, auto-resume
+nudge on restart) — see [docs/sessions.md](docs/sessions.md). The full
+command/keyboard surface (findings/evidence/hypotheses/attack-surface/
+source browsers, scope editing, approvals, pause/continue/stop, teach/
+expert modes) is in [docs/tui.md](docs/tui.md) and `/help` inside the
+shell.
+
+Everything below this point documents the underlying Core — scope
+enforcement, the agent loop, tool execution, validation — that the
+Product Shell above is built on, and remains available as a scripted,
+non-interactive CLI (`adi lab`, `adi assess`, `adi run-tool`, ...) for
+automation.
 
 ## What Adi is not
 

@@ -155,7 +155,7 @@ def doctor():
                 console.print(f"    {profile.name}: {profile.kind} [{profile.locality}] {profile.model or '(default model)'}")
         sessions = SessionRegistry().list()
         console.print(f"[green]✓[/green] {len(sessions)} Product session(s) recorded")
-    except Exception as exc:  # doctor must never crash on an optional probe
+    except Exception as exc:  # noqa: BLE001 - doctor must never crash on an optional probe
         console.print(f"[yellow]○[/yellow] Product Shell probe failed: {exc}")
 
     console.print()

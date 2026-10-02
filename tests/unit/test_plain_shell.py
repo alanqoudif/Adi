@@ -112,3 +112,42 @@ async def test_plain_shell_pause_continue_stop_commands(tmp_path):
     await shell._handle("/continue")
     await shell._handle("/stop")
     assert shell.controller.state == ControllerState.STOPPED
+
+
+@pytest.mark.asyncio
+async def test_provider_failure_then_switch_and_continue(tmp_path):
+    """A provider that raises LLMError leaves the assessment alive and
+    idle; switching to a working profile and /continue resumes the drive
+    loop to completion without re-creating the assessment."""
+    from adi.actions import ActionType, PlannedAction
+    from adi.product.events import EventType
+
+    config = AdiConfig(runtime=RuntimeConfig(type="mock"))
+    shell = PlainShell(config, project_root=tmp_path)
+
+    # An 'openai-compatible' profile with no base_url fails to resolve to
+    # an LLMProvider at all — this is the real failure path ModelManager.
+    # provider_for() -> build_llm_provider() raises on, caught in
+    # ProductController._drive() and surfaced as MODEL_ERROR.
+    shell.controller.models.add_profile(ProviderProfile(name="broken", kind="openai-compatible", locality="local"))
+    shell.controller.models.add_profile(ProviderProfile(name="good", kind="mock", locality="local"))
+    shell.controller.models.set_active("broken")
+
+    await shell._handle("/new 127.0.0.1")
+
+    seen = []
+    shell.controller.events.subscribe(lambda e: seen.append(e))
+
+    await shell._handle("do something")  # starts the loop against 'broken'
+    await shell.controller.wait_idle()
+
+    assert any(e.type == EventType.MODEL_ERROR for e in seen)
+    assert shell.controller.state != ControllerState.COMPLETED
+
+    await shell._handle("/provider good")
+    good_llm = shell.controller.models.provider_for("planner")
+    good_llm.script_structured(PlannedAction(action_type=ActionType.COMPLETE, reason_summary="ok now"))
+
+    await shell._handle("/continue")
+    await shell.controller.wait_idle()
+    assert shell.controller.state == ControllerState.COMPLETED

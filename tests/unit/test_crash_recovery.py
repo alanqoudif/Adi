@@ -13,7 +13,6 @@ async def test_resume_marks_dangling_planned_action_interrupted(tmp_path):
     controller = ProductController(config, project_root=tmp_path)
     await controller.new_assessment("127.0.0.1")
     session_name = controller.session_name
-    assessment_id = controller.assessment.id
 
     # Simulate a crash mid-tool-execution: an action recorded as
     # 'planned' that never reached update_action_result.

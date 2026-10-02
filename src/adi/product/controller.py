@@ -111,7 +111,7 @@ class ProductController:
         self.state = ControllerState.IDLE
         return self.assessment
 
-    def auto_resume_candidate(self) -> "SessionRecordLike | None":
+    def auto_resume_candidate(self) -> SessionRecordLike | None:
         return self.sessions.most_recent()
 
     async def set_goal(self, goal: str) -> Scope:
