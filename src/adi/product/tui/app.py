@@ -10,9 +10,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import ClassVar
 
+from functools import partial
+
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.command import Hit, Hits, Provider
 from textual.containers import Horizontal
 from textual.widgets import Footer, Header, Input, RichLog, Static
 
