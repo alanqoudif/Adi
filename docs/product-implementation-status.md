@@ -181,7 +181,8 @@ expert-mode,configuration}.md`, `README.md`. Tests: `test_expert_console.py`,
 ## Provider onboarding acceptance — 2026-10-03
 
 - First-run offer in bare `adi` and `adi shell`: all seven providers plus
-  Continue without AI. `/provider add` and Ctrl+P open interactive setup.
+  Continue without AI. Menu numbers work directly; `/provider add` and
+  Ctrl+P open the same interactive setup.
 - Shared TUI/plain wizard: masked credential entry, endpoint defaults,
   dynamic discovery, manual model IDs, real minimal completion test,
   transactional edit (failed tests leave profile/key unchanged), skip/cancel.
@@ -216,3 +217,14 @@ expert-mode,configuration}.md`, `README.md`. Tests: `test_expert_console.py`,
   quality or a paid remote-provider account.
 - Local socket binding required sandbox escalation; loopback acceptance
   succeeded with that access. No real provider API keys were required.
+
+The temporary manual provider profile and localhost servers were removed
+after verification; no test provider is left active in the operator project.
+
+
+Final acceptance checks: `ruff check .` PASS; `pytest -q` PASS — **350 passed,
+1 skipped**, with the pre-existing `TestAccount` collection warning.
+The existing Playwright/browser-environment gate remains skipped; provider
+onboarding, local HTTP fixtures and the real Core acceptance path passed.
+No paid-provider credentials or real Ollama/LM Studio/vLLM installation
+were required or claimed for this acceptance.

@@ -36,7 +36,7 @@ def test_message(result) -> str:
 
 async def setup_provider(
     manager: ModelManager, prompt: Prompt, emit: Callable[[str], None],
-    edit: str | None = None,
+    edit: str | None = None, choice: str | None = None,
 ) -> bool:
     old = manager.require_profile(edit) if edit else None
     if old:
@@ -44,7 +44,7 @@ async def setup_provider(
         name = old.name
     else:
         emit(MENU)
-        choice = (await prompt('Choose provider (1–8, /cancel): ', False)).strip().lower()
+        choice = (choice or await prompt('Choose provider (1–8, /cancel): ', False)).strip().lower()
         if choice in ('8', 'skip', '/cancel', 'continue without ai'):
             emit('Continue without AI. Run /provider add whenever you are ready.')
             return False

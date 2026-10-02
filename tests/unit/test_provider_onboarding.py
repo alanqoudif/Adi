@@ -319,3 +319,25 @@ def test_fallback_store_is_atomic_permission_restricted(tmp_path):
     assert stat.S_IMODE(store.stat().st_mode) == 0o600
     assert not list(store.parent.glob('.credentials-*'))
     assert credentials.get_secret('x', 'keyring') == SECRET
+
+
+@pytest.mark.asyncio
+async def test_first_run_tui_menu_choices_connect_or_skip(tmp_path, provider_http):
+    app = AdiApp(AdiConfig(runtime=RuntimeConfig(type='mock')), tmp_path)
+    async with app.run_test() as pilot:
+        widget = app.query_one('#input')
+        for value in ['8', '4', '', '', '1', 'y']:
+            widget.value = value
+            await pilot.press('enter')
+            await pilot.pause()
+        assert app.shell.controller.models.active_profile().kind == 'ollama'
+        assert 'fixture-a' in str(app.query_one('#side').render())
+
+
+@pytest.mark.asyncio
+async def test_anthropic_malformed_content_has_safe_error(tmp_path, monkeypatch):
+    original = httpx.AsyncClient
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kw: original(**kw, transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, json={'content': SECRET}))))
+    result = await ModelManager(tmp_path).test_connection(ProviderProfile(name='x', kind='anthropic', model='m'), secret=SECRET)
+    assert result.error == 'Provider returned malformed response'

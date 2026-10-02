@@ -163,7 +163,7 @@ class PlainShell:
         action, _, name = rest.strip().partition(" ")
         name = name.strip()
         if action == "add":
-            await setup_provider(manager, self.prompt, self._print)
+            await setup_provider(manager, self.prompt, self._print, choice=name or None)
         elif action == "choose":
             self._print("Available profiles: " + ", ".join(manager.store.profiles))
             name = (await self.prompt("Provider name: ", False)).strip()

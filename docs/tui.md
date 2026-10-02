@@ -53,7 +53,8 @@ copy.
 
 On an empty project the welcome log offers OpenAI, Anthropic, OpenRouter,
 Ollama, LM Studio, vLLM, Custom OpenAI-compatible, and Continue without AI.
-Use `/provider add` or Ctrl+P → **Add AI Provider** to open setup. Answer
+Enter a menu number (1–8), use `/provider add`, or Ctrl+P → **Add AI Provider**
+to open setup or continue without AI. Answer
 prompts in the input field; API key entry is masked and never copied to
 the chat log. `/cancel` cancels setup without saving. The input regains
 normal behavior after setup or cancellation.

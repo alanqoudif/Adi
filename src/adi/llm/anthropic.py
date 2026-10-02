@@ -35,7 +35,7 @@ class AnthropicProvider(LLMProvider):
         except (httpx.HTTPError, ValueError) as exc:
             raise LLMError(provider_error(exc)) from None
         try:
-            content = ''.join(b['text'] for b in body['content'] if b.get('type') == 'text')
+            content = ''.join(b['text'] for b in body['content'] if isinstance(b, dict) and b.get('type') == 'text')
             if not content.strip():
                 raise ValueError('empty response')
             return redact_text(content, (self.api_key,))

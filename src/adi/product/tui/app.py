@@ -166,7 +166,7 @@ class AdiApp(App):
             )
         if self.shell.controller.models.active_profile() is None:
             self._write_line("No AI provider configured.\n" + MENU)
-            self._write_line("Run /provider add or Ctrl+P → Add AI Provider. You may continue without AI.")
+            self._write_line("Enter 1–8, run /provider add or Ctrl+P → Add AI Provider. You may continue without AI.")
         self._refresh_side()
         self.query_one("#input", Input).focus()
 
@@ -194,7 +194,10 @@ class AdiApp(App):
             return
         self._busy = True
         try:
-            await self.shell._handle(line)
+            if self.shell.controller.models.active_profile() is None and line in {str(i) for i in range(1, 9)}:
+                await self.shell._provider_command("add " + line)
+            else:
+                await self.shell._handle(line)
         except Exception as exc:  # noqa: BLE001 - user-facing command boundary
             self.shell._print(f"Error: {exc}")
         finally:
