@@ -147,13 +147,19 @@ Remaining, in priority order:
    satisfies "browsable" but not "a navigable widget/pane with its own
    scroll/selection") — add `Screen` subclasses or a tabbed container,
    still reading through the same `ExpertConsole`/`Workspace` calls.
-2. **Command palette parity**: Textual's built-in `Ctrl+P` palette
-   (`App.COMMANDS`) is enabled but not populated with Adi-specific
-   actions (New assessment, Resume, Switch model, ...) — add a
-   `Provider`/`Hits` implementation per Textual's command-palette API.
-3. **`/settings` with origin tracking** (assessment vs. project vs.
-   global vs. default) — `docs/configuration.md` documents the current
-   per-surface state; a unified view is not built.
+2. **Command palette parity** — DONE (`adi.product.tui.app.AdiCommands`,
+   `tests/unit/test_tui.py`): Ctrl+P lists New/Resume/Sessions/Provider/
+   Findings/Hypotheses/Evidence/Attack-surface/Source/Scope/Tools/
+   Capabilities/Report/Pause/Continue/Stop/Help, each forwarding into the
+   same `PlainShell._handle()` every other entry point uses.
+3. **`/settings` with origin tracking** — DONE (`PlainShell.
+   _print_settings`, `tests/unit/test_plain_shell.py::
+   test_settings_command`): AI/Privacy/Runtime/Security/UI/Advanced
+   sections, each value tagged with its layer (project `.adi.yaml` /
+   project `.adi/product/providers.json` / assessment scope / session /
+   environment / default). Origin is inferred from which layer's file
+   exists, not tracked per-field inside `AdiConfig` itself — documented
+   as best-effort in the command's own docstring.
 4. Manual real-terminal verification of the TUI (this sandbox has no
    TTY attached to the agent) — ask the user to run `adi shell` and
    report back, or verify in an environment with one.

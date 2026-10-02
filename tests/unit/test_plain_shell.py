@@ -175,3 +175,12 @@ async def test_source_search_command_without_index(tmp_path):
 
     await shell._handle("/source-search")
     await shell._handle("/source-search some_query")
+
+
+@pytest.mark.asyncio
+async def test_settings_command(tmp_path):
+    config = AdiConfig(runtime=RuntimeConfig(type="mock"))
+    shell = PlainShell(config, project_root=tmp_path)
+    shell.controller.models.add_profile(ProviderProfile(name="m", kind="mock", locality="local"))
+    await shell._handle("/new 127.0.0.1")
+    await shell._handle("/settings")

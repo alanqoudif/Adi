@@ -46,6 +46,7 @@ Common commands:
   /trace <finding-id>      evidence trace: finding -> hypothesis -> validation -> evidence
   /why <id>                explain an action/hypothesis/finding from stored state (no LLM)
   /source-search <query>   find indexed source matching a term or path ("where is X implemented?")
+  /settings                effective configuration across layers, with origin
   /pause  /continue  /stop control the assessment loop
   /report                  generate markdown + JSON reports
   /teach on|off             toggle teach mode
@@ -263,6 +264,8 @@ class PlainShell:
             self._print_why(rest.strip())
         elif cmd == "/source-search":
             self._print_source_search(rest.strip())
+        elif cmd == "/settings":
+            self._print_settings()
         elif cmd == "/pause":
             await self.controller.pause()
             self._print("Paused — no new actions will be scheduled.")
@@ -529,6 +532,47 @@ class PlainShell:
             self._print("Usage: /why <action-id|hypothesis-id|finding-id>")
             return
         self._print(explain_why(self.controller.assessment.workspace, subject_id))
+
+    def _print_settings(self) -> None:
+        """Effective configuration with its origin, across the layers
+        documented in docs/configuration.md. `AdiConfig` itself doesn't
+        track per-field provenance, so origin is inferred from which
+        layer's file exists — this is a best-effort summary, not a
+        guarantee every value traces to the exact line it came from."""
+        core_config_path = self.project_root / ".adi.yaml"
+        core_origin = "project (.adi.yaml)" if core_config_path.exists() else "default"
+        self._print("[bold]AI[/bold]")
+        active = self.controller.models.active_profile()
+        providers_path = self.controller.models.path
+        providers_origin = "project (.adi/product/providers.json)" if providers_path.exists() else "default (none configured)"
+        self._print(f"  active provider: {active.name if active else '(none)'}  [{providers_origin}]")
+        self._print(f"  role assignments: {self.controller.models.store.roles.model_dump()}")
+
+        self._print("\n[bold]Privacy[/bold]")
+        policy = self.controller.models.store.privacy
+        for field_name, value in policy.model_dump().items():
+            self._print(f"  {field_name}: {value}  [{'project' if providers_path.exists() else 'default'}]")
+
+        self._print("\n[bold]Runtime[/bold]")
+        self._print(f"  type: {self.config.runtime.type}  [{core_origin}]")
+        self._print(f"  allow_local: {self.config.runtime.allow_local}  [{core_origin}]")
+
+        self._print("\n[bold]Security[/bold]")
+        if self.controller.assessment is not None:
+            scope = self.controller.assessment.workspace.load_scope()
+            self._print(f"  authentication_testing: {scope.permissions.authentication_testing}  [assessment scope]")
+            self._print(f"  approval_mode: {scope.approval_mode}  [assessment scope]")
+        else:
+            self._print("  (no active assessment)")
+
+        self._print("\n[bold]UI[/bold]")
+        self._print(f"  teach: {self.teach}  [session]")
+        self._print(f"  expert: {self.expert}  [session]")
+
+        self._print("\n[bold]Advanced[/bold]")
+        from adi.product.credentials import keyring_available
+
+        self._print(f"  credential store: {'OS keyring' if keyring_available() else 'file fallback (~/.config/adi)'}  [environment]")
 
     async def _generate_report(self) -> None:
         if not self._require_assessment():
