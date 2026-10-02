@@ -50,9 +50,18 @@ def _load_assessment(assessment_id, config):
 
 
 @app.callback(invoke_without_command=True)
-def main(ctx: typer.Context, version: bool = typer.Option(False, "--version")):
+def main(
+    ctx: typer.Context,
+    version: bool = typer.Option(False, "--version"),
+    plain: bool = typer.Option(False, "--plain", help="Launch the interactive Product Shell directly."),
+):
     if version:
         console.print(f"adi {__version__}")
+        raise typer.Exit()
+    if plain:
+        from adi.product.plain_shell import run_plain_shell
+
+        run_plain_shell(load_config())
         raise typer.Exit()
     if ctx.invoked_subcommand is None:
         console.print(ctx.get_help())
@@ -120,6 +129,34 @@ def doctor():
             f"(set ${config.provider.api_key_env}) — deterministic tool execution still works, "
             f"but autonomous planning will not."
         )
+
+    console.print("\n[bold]Product Shell[/bold]")
+    try:
+        from adi.product.credentials import keyring_available
+        from adi.product.models import ModelManager
+        from adi.product.sessions import SessionRegistry
+
+        manager = ModelManager()
+        if keyring_available():
+            console.print("[green]✓[/green] OS keyring available for credential storage")
+        else:
+            console.print(
+                "[yellow]○[/yellow] OS keyring not available in this environment — "
+                "falling back to a 0600 file store under ~/.config/adi/"
+            )
+        profiles = manager.list_profiles()
+        if not profiles:
+            console.print("[yellow]○[/yellow] No AI provider profiles configured yet "
+                           "(run 'adi shell' for first-run setup)")
+        else:
+            console.print(f"[green]✓[/green] {len(profiles)} provider profile(s) configured "
+                           f"(active: {manager.store.active_profile or 'none'})")
+            for profile in profiles:
+                console.print(f"    {profile.name}: {profile.kind} [{profile.locality}] {profile.model or '(default model)'}")
+        sessions = SessionRegistry().list()
+        console.print(f"[green]✓[/green] {len(sessions)} Product session(s) recorded")
+    except Exception as exc:  # noqa: BLE001 - doctor must never crash on an optional probe
+        console.print(f"[yellow]○[/yellow] Product Shell probe failed: {exc}")
 
     console.print()
     if ok:
@@ -778,6 +815,27 @@ def run_capability_cmd(assessment_id: str, name: str, target: str,
         console.print(redact_text(str(exc), known_secrets(assessment.workspace.load_scope())))
         raise typer.Exit(1) from exc
     console.print(f'{len(observations)} normalized observations recorded')
+
+
+@app.command()
+def shell(
+    plain: bool = typer.Option(
+        False, "--plain", help="Line-oriented interactive mode instead of the Textual TUI."
+    ),
+):
+    """Launch the interactive Product Shell: chat-driven security
+    assessment workflow over the real Core (scope, orchestrator, tools,
+    evidence, findings). This (or bare `adi`) is the primary way to use
+    Adi day to day; the other subcommands remain for scripted/
+    non-interactive automation."""
+    if plain:
+        from adi.product.plain_shell import run_plain_shell
+
+        run_plain_shell(load_config())
+        return
+    from adi.product.tui.app import run_tui
+
+    run_tui(load_config())
 
 
 if __name__ == "__main__":
