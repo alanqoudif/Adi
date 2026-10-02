@@ -28,6 +28,9 @@ would ask:
 generic/empty response that merely looks similar?
 - Could caching, a stale session, or redirect behavior explain this \
 instead of a real security failure?
+- Is ownership enforced by a called helper or router-level middleware?
+- Is this code reachable and is the vulnerable dependency feature used?
+- Is a secret fake/test-only? Source presence does not prove credential validity.
 - Is there a more mundane explanation for the observed difference?
 
 You cannot run any tool or validation yourself. If you believe the \

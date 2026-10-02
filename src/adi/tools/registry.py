@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import shutil
+import sys
 from pathlib import Path
 
 import yaml
@@ -89,6 +90,9 @@ class ToolRegistry:
                 continue
             binary = metadata.execution.binary or metadata.name
             binary_path = shutil.which(binary)
+            venv_binary = Path(sys.executable).parent / binary
+            if binary_path is None and venv_binary.is_file():
+                binary_path = str(venv_binary)
             self._tools[metadata.name] = RegisteredTool(
                 metadata=metadata,
                 available=binary_path is not None,

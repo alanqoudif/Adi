@@ -1,0 +1,16 @@
+capabilities:
+- scan_dependencies
+category:
+- source
+description: Offline repository scan_dependencies; indications only
+execution:
+  priority: 20
+  timeout_seconds: 120
+name: trivy
+output:
+  machine_readable: true
+  preferred_format: json
+requires:
+  target: true
+scope_requirements:
+  target_must_be_authorized: true

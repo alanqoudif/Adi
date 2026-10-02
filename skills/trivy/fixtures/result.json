@@ -1,0 +1,1 @@
+{"Results":[{"Target":"package.json","Type":"npm","Vulnerabilities":[{"PkgName":"adi-test-vulnerable-lib","InstalledVersion":"1.0.0","VulnerabilityID":"ADI-TEST-001","FixedVersion":"1.0.1","Severity":"LOW"}]}]}

@@ -1,0 +1,16 @@
+capabilities:
+- scan_source_patterns
+category:
+- source
+description: Offline repository scan_source_patterns; indications only
+execution:
+  priority: 10
+  timeout_seconds: 120
+name: semgrep
+output:
+  machine_readable: true
+  preferred_format: json
+requires:
+  target: true
+scope_requirements:
+  target_must_be_authorized: true

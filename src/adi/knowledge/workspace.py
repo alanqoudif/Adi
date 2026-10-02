@@ -662,3 +662,22 @@ class Workspace:
             rows = session.execute(stmt.order_by(CriticReviewRecord.created_at)).scalars().all()
             session.expunge_all()
             return list(rows)
+
+    def save_source(self, snapshot) -> None:
+        from adi.knowledge.db import SourceSnapshotRecord
+        payload = snapshot.model_dump_json()
+        with self._session_factory() as session:
+            record = session.get(SourceSnapshotRecord, self.assessment_id)
+            if record is None:
+                record = SourceSnapshotRecord(assessment_id=self.assessment_id, payload=payload)
+                session.add(record)
+            else:
+                record.payload = payload
+            session.commit()
+
+    def load_source(self):
+        from adi.knowledge.db import SourceSnapshotRecord
+        from adi.source.models import SourceSnapshot
+        with self._session_factory() as session:
+            record = session.get(SourceSnapshotRecord, self.assessment_id)
+            return SourceSnapshot.model_validate_json(record.payload) if record else None

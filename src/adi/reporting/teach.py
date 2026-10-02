@@ -43,4 +43,12 @@ def explain_hypothesis(workspace, hypothesis_id: str) -> dict[str, str]:
         "Lesson": _LESSONS.get(h.category, "Separate an indication from reproducible evidence; retain contrary evidence."),
         "Evidence": ", ".join(dict.fromkeys(supporting + contradicting)),
     }
+    from adi.source.repository import SourceWorkspace
+    snapshot = SourceWorkspace(workspace).load()
+    if snapshot:
+        source_h = next((s for s in snapshot.hypotheses if s.hypothesis_id == h.id), None)
+        if source_h:
+            data["Source pattern"] = source_h.observation
+            data["Runtime mapping"] = "; ".join(c.method + " " + c.runtime_path for c in snapshot.correlations if c.route_id == source_h.route_id) or "Not correlated"
+            data["Secure implementation"] = "Check resource owner/user_id against authenticated principal before returning data; preserve explicit policy grants."
     return redact_structure(data, known_secrets(workspace.load_scope()))

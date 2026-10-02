@@ -55,6 +55,9 @@ class ToolExecutor:
         if tool is None:
             raise ToolExecutionError(f"unknown tool '{tool_name}' — is its skill registered?")
 
+        if "source" in tool.metadata.category:
+            raise ToolExecutionError("source tools require SourceScanner; raw runtime output is forbidden")
+
         action = PlannedAction(
             action_type=ActionType.RUN_TOOL,
             capability=capability or (tool.metadata.capabilities[0] if tool.metadata.capabilities else ""),

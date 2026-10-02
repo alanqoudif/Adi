@@ -25,6 +25,15 @@ def _finding_block(f: FindingReport) -> list[str]:
               "**Impact**", "", f.impact or "(not characterized)", "",
               "**Remediation**", "", f.remediation or "(none)", "",
               "**References**", ""]
+    if f.source_evidence:
+        lines += ["", "**Source Evidence**", "", ", ".join(f.source_evidence),
+                  "", "**Source Locations**", "", *[f"- {loc}" for loc in f.source_locations],
+                  "", "**Root Cause**", "", f.root_cause.get("summary", "Not yet established"),
+                  "", "**Runtime Evidence**", "", ", ".join(f.runtime_evidence)]
+    if f.affected_code:
+        lines += ["", "**Affected Code (bounded, redacted)**", ""]
+        for slice in f.affected_code:
+            lines += [slice['location'], "", *['    ' + line for line in slice['snippet'].splitlines()], ""]
     lines += [f"- {r}" for r in f.references] or ["- (none)"]
     lines += ["", f"**Critic review:** {f.critic_summary}", ""]
     return lines
@@ -61,6 +70,21 @@ def render_markdown(r: Report) -> str:
             f"- Technologies: {', '.join(sf['technologies']) or 'none identified'}",
             f"- Sessions: {', '.join(sf['sessions'])}", ""]
     out += [f"  - `{e}`" for e in sf["endpoints"][:50]]
+    if r.source_summary:
+        import json
+        out += ["", "## Source Code Summary", "", json.dumps(r.source_summary, indent=2),
+                "", "## Source/Runtime Correlation Summary", ""]
+        out += [f"- {c['method']} {c['runtime_path']} ↔ {c['route_id']} (confidence {c['confidence']})"
+                for c in r.source_correlations] or ["No current correlations."]
+        out += ["", "## Known Affected Dependencies", ""]
+        out += [f"- {v['package']} {v['installed_version']}: {v['advisory_id']} — {v['status']}; runtime exploitability {v['runtime_exploitability']}"
+                for v in r.dependency_vulnerabilities] or ["None identified."]
+        out += ["", "## Secret Indications (values redacted)", ""]
+        out += [f"- {s['file']}:{s['line']} — {s['status']}, fingerprint `{s['fingerprint']}`, test-only={s['test_only']}"
+                for s in r.secret_indications] or ["None identified."]
+        out += ["", "## SAST Indications", ""]
+        out += [f"- {s['rule']}: {s['status']} — {s['review_reason'] or 'Requires independent validation'}"
+                for s in r.source_indications] or ["None identified."]
     out += ["", "## Confirmed Findings", ""]
     if r.findings:
         for f in r.findings:

@@ -60,6 +60,29 @@ class ValidationEngine:
         if hypothesis is None:
             raise ValueError(f"no hypothesis '{action.hypothesis_id}'")
 
+        from adi.source.repository import SourceWorkspace
+        source = SourceWorkspace(self.ctx.workspace)
+        source.assert_hypothesis_current(action.hypothesis_id)
+        snapshot = source.load()
+        if snapshot and any(h.hypothesis_id == action.hypothesis_id for h in snapshot.hypotheses):
+            if snapshot.repository.stale:
+                raise ValueError("source hypothesis stale; re-index and use current hypothesis")
+            scope = self.ctx.workspace.load_scope()
+            if action.action_type == ValidationActionType.CHECK_OBJECT_AUTHORIZATION:
+                names = {a.name for a in scope.test_accounts}
+                owner, other = action.parameters.get('owner_session'), action.parameters.get('other_session')
+                if not scope.permissions.authentication_testing or owner not in names or other not in names or owner == other:
+                    raise ValueError('source authorization validation requires two explicitly authorized test accounts and authentication-testing permission')
+            matched = [c for c in snapshot.correlations
+                       if any(h.route_id == c.route_id and h.hypothesis_id == action.hypothesis_id
+                              for h in snapshot.hypotheses)]
+            from adi.source.routes import route_matches
+            validation_url = urlsplit(action.parameters.get("url", ""))
+            origin = validation_url._replace(path='', query='', fragment='').geturl()
+            if not any(route_matches(c.runtime_path, action.parameters.get("url", ""))
+                       and origin == c.application_origin for c in matched):
+                raise ValueError("source hypothesis requires an observed source/runtime correlation")
+
         if should_stop_validating(hypothesis.status):
             raise HypothesisAlreadyResolvedError(
                 f"hypothesis {action.hypothesis_id} is already {hypothesis.status.value} "

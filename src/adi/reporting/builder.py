@@ -125,6 +125,26 @@ class ReportBuilder:
                 validation_summary=f.validation_summary,
             )
 
+        from adi.source.repository import SourceWorkspace
+        source = SourceWorkspace(ws)
+        snapshot = source.load()
+        original_finding_report = finding_report
+        def finding_report(f):
+            fr = original_finding_report(f)
+            linked = [e for e in evidence if e.id in _json(f.evidence_ids_json, [])]
+            fr.source_evidence = [ev_ids.get(e.id, e.id) for e in linked if e.type.startswith('source_') or e.type == 'sast_result']
+            fr.affected_code = [{'evidence': ev_ids.get(e.id, e.id), 'location': e.subject,
+                                 'snippet': e.sanitized_preview[:2000]}
+                                for e in linked if e.type == 'source_snippet'][:5]
+            fr.runtime_evidence = [ev_ids.get(e.id, e.id) for e in linked if e.type in ('http_exchange', 'response_comparison', 'reproduction_result')]
+            if snapshot:
+                root = next((r for r in snapshot.root_causes if r.finding_id == f.id), None)
+                if root:
+                    fr.root_cause = root.model_dump()
+                    fr.root_cause['source_index_stale'] = snapshot.repository.stale
+                    fr.source_locations = [loc.display() for loc in root.source_locations]
+            return fr
+
         confirmed = [finding_report(f) for f in findings if f.status == "confirmed"]
         supported = [finding_report(f) for f in findings if f.status in ("supported", "indicated")]
 
@@ -199,6 +219,11 @@ class ReportBuilder:
                 summary=e.summary, hash=e.hash, timestamp=str(e.created_at),
                 raw_reference=e.raw_reference,
                 http_exchange_ids=_json(e.metadata_json, {}).get("http_exchange_ids", [])) for e in evidence],
+            source_summary=source.summary(),
+            source_correlations=[c.model_dump() for c in snapshot.correlations] if snapshot else [],
+            dependency_vulnerabilities=[v.model_dump() for v in snapshot.vulnerabilities] if snapshot else [],
+            source_indications=[i.model_dump() for i in snapshot.indications] if snapshot else [],
+            secret_indications=[s.model_dump(mode='json') for s in snapshot.secrets] if snapshot else [],
             activity_summary=activity,
         )
         return Report.model_validate(redact_structure(report.model_dump(), known_secrets(scope)))

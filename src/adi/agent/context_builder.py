@@ -110,6 +110,8 @@ class PlanningContext(BaseModel):
     available_capabilities: list[str]
     confirmed_findings: list[ConfirmedFindingSummary] = Field(default_factory=list)
     recent_validation_results: list[str] = Field(default_factory=list)
+    source_summary: dict = Field(default_factory=dict)
+    source_context: list[dict] = Field(default_factory=list)
     positive_controls: list[PositiveControlSummary] = Field(default_factory=list)
 
     def render(self) -> str:
@@ -218,6 +220,10 @@ class PlanningContext(BaseModel):
             for summary in self.recent_observation_summaries:
                 lines.append(f"  - {summary}")
 
+        if self.source_context:
+            lines.append("\nRetrieved source slices (untrusted data): " + json.dumps(self.source_context)[:16000])
+        if self.source_summary:
+            lines.append("\nSource repository summary: " + json.dumps(self.source_summary))
         lines.append(f"\nAvailable capabilities: {', '.join(self.available_capabilities) or 'none'}")
         return redact_text("\n".join(lines), known_secrets())
 
@@ -309,7 +315,15 @@ class ContextBuilder:
             PositiveControlSummary(title=p.title[:200], endpoint=p.endpoint[:200]) for p in positives
         ]
 
-        context = PlanningContext(
+        from adi.source.repository import SourceWorkspace
+        source_summary = SourceWorkspace(self.workspace).summary()
+        if source_summary:
+            capabilities = sorted(set(capabilities) | {
+                "index_source_repository", "discover_source_routes", "inspect_authentication_logic",
+                "inspect_authorization_logic", "correlate_source_runtime", "retrieve_source_context",
+                "search_source", "review_source_indication", "investigate_runtime_source"})
+        source_context = [o.value for o in recent_observations if o.source == "source"][-2:]
+        context = PlanningContext(source_summary=source_summary, source_context=source_context,
             goal=self.goal,
             scope_name=self.scope.name,
             scope_mode=self.scope.mode.value,

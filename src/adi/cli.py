@@ -102,6 +102,10 @@ def doctor():
     for tool in tools:
         mark = "[green]✓[/green]" if tool.available else "[yellow]○[/yellow]"
         console.print(f"    {mark} {tool.metadata.name}")
+    console.print("\nSource tools (local offline scanning):")
+    for tool in tools:
+        if "source" in tool.metadata.category:
+            console.print(f"  {tool.metadata.name}: {_tool_version(tool) if tool.available else 'unavailable'}")
 
     import os
     if os.environ.get("ADI_LLM_API_KEY") or config.provider.api_key_env in os.environ:
@@ -148,13 +152,25 @@ def tools():
 def _tool_version(tool) -> str:
     """Best-effort version probe — never fails the command if the binary
     doesn't support a version flag or isn't actually runnable."""
+    import os
     import subprocess
+    import tempfile
+
+    import certifi
 
     for flag in ("--version", "-version", "-V"):
         try:
-            result = subprocess.run(
-                [tool.binary_path, flag], capture_output=True, text=True, timeout=5, check=False,
-            )
+            with tempfile.TemporaryDirectory(prefix='adi-version-') as directory:
+                env = dict(os.environ)
+                env.update({'SEMGREP_ENABLE_VERSION_CHECK': '0', 'SEMGREP_SEND_METRICS': 'off',
+                            'SEMGREP_LOG_FILE': directory + '/semgrep.log',
+                            'SEMGREP_SETTINGS_FILE': directory + '/settings.yml',
+                            'SSL_CERT_FILE': certifi.where()})
+                result = subprocess.run(
+                    [tool.binary_path, flag], capture_output=True, text=True, timeout=5,
+                    check=False, env=env)
+            if result.returncode != 0:
+                continue
             output = (result.stdout or result.stderr).strip().splitlines()
             if output:
                 return output[0][:40]
@@ -372,6 +388,10 @@ def status(assessment_id: str = typer.Argument(...)):
     else:
         console.print("Last action:   (none yet)")
     console.print(f"Current state: {ws.assessment_status()}")
+    from adi.source.repository import SourceWorkspace
+    summary = SourceWorkspace(ws).summary()
+    if summary:
+        console.print("\nSource: " + str(summary), markup=False)
 
 
 @app.command()
@@ -548,6 +568,15 @@ def finding_cmd(assessment_id: str = typer.Argument(...), finding_id: str = type
             console.print(f"\nCritic review: {review.decision} — concerns: {'; '.join(_json(review.concerns_json)) or 'none'}")
     if not record.critic_review_id:
         console.print("Critic review: not recorded (deterministic path)")
+    from adi.reporting.builder import ReportBuilder
+    source_detail = next((f for f in ReportBuilder(ws).build().findings if f.id == record.id), None)
+    if source_detail and source_detail.source_evidence:
+        console.print("Runtime Evidence: " + ", ".join(source_detail.runtime_evidence))
+        console.print("Source Evidence: " + ", ".join(source_detail.source_evidence))
+        console.print("Source Locations / Affected Code: " + ", ".join(source_detail.source_locations))
+        console.print("Root Cause: " + source_detail.root_cause.get("summary", "not established"))
+        for slice in source_detail.affected_code:
+            console.print(slice['location'] + '\n' + slice['snippet'], markup=False)
     console.print(f"\nRemediation: {record.remediation or '(none)'}")
     references = _json(record.references_json)
     if not references:
@@ -605,6 +634,102 @@ def teach_cmd(assessment_id: str, hypothesis_id: str):
         raise typer.BadParameter("hypothesis not found")
     for label, value in explain_hypothesis(ws, raw_id).items():
         console.print(f"{label}: {value}", markup=False)
+
+
+@app.command()
+def audit(
+    repository: Path = typer.Argument(..., help="Operator-accessible source repository."),  # noqa: B008
+    target: str = typer.Option('', '--target', help="Explicitly authorized runtime application URL."),
+    scope_file: Path = typer.Option(None, '--scope', help="YAML scope with test-account references and permissions."),  # noqa: B008
+    autonomous: bool = typer.Option(False, '--autonomous'),
+):
+    """Bind a source repository, index locally, optionally assess its scoped runtime."""
+    import yaml
+
+    from adi.source.repository import SourceWorkspace
+    config = load_config()
+    scope = Scope.model_validate(yaml.safe_load(scope_file.read_text())) if scope_file else Scope(
+        name=f'source-{repository.name}', mode=AssessmentMode.SOURCE_AND_RUNTIME,
+        targets=[target] if target else [],
+        goal='Index source, correlate observed runtime routes, validate controlled hypotheses and report.')
+    if target and not scope.host_is_target(__import__('urllib.parse', fromlist=['urlsplit']).urlsplit(target).hostname or ''):
+        raise typer.BadParameter('target outside supplied scope')
+    assessment = Assessment.create(scope, config)
+    try:
+        snapshot = SourceWorkspace(assessment.workspace).index(repository, target)
+    except (ValueError, OSError, PermissionError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    console.print(f'Assessment: {assessment.id}\nRepository: {snapshot.repository.root_path}\n'
+                  f'Indexed files: {snapshot.repository.files_count}; source routes: {len(snapshot.routes)}')
+    if autonomous:
+        _run_autonomous(assessment, config)
+
+
+@app.command('source')
+def source_cmd(assessment_id: str):
+    """Summarize persisted source intelligence and staleness."""
+    from adi.source.repository import SourceWorkspace
+    source = SourceWorkspace(_load_assessment(assessment_id, load_config()).workspace)
+    import json
+    console.print(json.dumps(source.summary(), indent=2), markup=False)
+
+
+@app.command('source-index')
+def source_index_cmd(assessment_id: str):
+    """Refresh the operator-bound repository; invalidates scans/correlations if changed."""
+    from adi.source.repository import SourceWorkspace
+    source = SourceWorkspace(_load_assessment(assessment_id, load_config()).workspace)
+    snapshot = source.load()
+    if not snapshot:
+        raise typer.BadParameter('no bound repository; use adi audit')
+    source.index(Path(snapshot.repository.root_path), snapshot.repository.application_origin)
+    source_cmd(assessment_id)
+
+
+@app.command('routes')
+def routes_cmd(assessment_id: str):
+    from adi.source.repository import SourceWorkspace
+    source = SourceWorkspace(_load_assessment(assessment_id, load_config()).workspace)
+    snapshot = source.load()
+    if not snapshot:
+        raise typer.BadParameter('no source index')
+    table = Table(title='Source Routes' + (' (STALE)' if snapshot.repository.stale else ''))
+    for col in ('Method', 'Source Route', 'Runtime Match', 'Handler', 'Middleware', 'File:Line'):
+        table.add_column(col)
+    for r in snapshot.routes:
+        matches = [c.runtime_path for c in snapshot.correlations if c.route_id == r.id]
+        table.add_row(r.method, r.path, ', '.join(matches) or '-', r.handler,
+                      ', '.join(r.middleware), r.location.display())
+    console.print(table)
+
+
+@app.command('correlations')
+def correlations_cmd(assessment_id: str):
+    from adi.source.repository import SourceWorkspace
+    source = SourceWorkspace(_load_assessment(assessment_id, load_config()).workspace)
+    for c in source.correlate():
+        snapshot = source.require_current()
+        route = next(r for r in snapshot.routes if r.id == c.route_id)
+        console.print(f'{c.method} {c.runtime_path} ↔ {route.location.display()} confidence {c.confidence}')
+
+
+@app.command('source-search')
+def source_search_cmd(assessment_id: str, query: str):
+    from adi.source.index import SourceIndex
+    from adi.source.repository import SourceWorkspace
+    index = SourceIndex(SourceWorkspace(_load_assessment(assessment_id, load_config()).workspace).require_current())
+    for loc in index.search_text(query):
+        console.print(loc.display() + '\n' + index.retrieve_context(loc), markup=False)
+
+
+@app.command('source-scan')
+def source_scan_cmd(assessment_id: str, capability: str):
+    from adi.source.scanners import SourceScanner
+    if capability not in ('scan_source_patterns', 'scan_secrets', 'scan_dependencies'):
+        raise typer.BadParameter('unknown source scan capability')
+    assessment = _load_assessment(assessment_id, load_config())
+    result = asyncio.run(SourceScanner(assessment.workspace, assessment.registry).scan(capability))
+    console.print(str(result), markup=False)
 
 
 if __name__ == "__main__":

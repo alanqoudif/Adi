@@ -102,6 +102,15 @@ class FindingPipeline:
         if hypothesis is None:
             raise ValueError(f"no hypothesis '{hypothesis_id}'")
 
+        from adi.source.repository import SourceWorkspace
+        source = SourceWorkspace(self.workspace)
+        try:
+            source.assert_hypothesis_current(hypothesis_id)
+        except ValueError as exc:
+            raise ConfirmationInvariantError(str(exc)) from exc
+        snapshot = source.load()
+        if snapshot and any(h.hypothesis_id == hypothesis_id for h in snapshot.hypotheses) and snapshot.repository.stale:
+            raise ConfirmationInvariantError("source index stale; cannot finalize outdated source hypothesis")
         evidence = self.evidence_store.for_hypothesis(hypothesis_id)
         if hypothesis.status == HypothesisStatus.CONFIRMED:
             existing = next((f for f in self.workspace.list_findings() if f.hypothesis_id == hypothesis_id), None)
@@ -124,6 +133,11 @@ class FindingPipeline:
             return FindingPipelineResult(HypothesisStatus.REJECTED, None, decision)
 
         if decision.status == VerificationStatus.SUPPORTED:
+            source_types = {'source_snippet', 'source_route', 'source_config', 'sast_result',
+                            'dependency_record', 'secret_indication'}
+            if any(e.type.value in source_types for e in evidence):
+                self._safe_transition(hypothesis_id, HypothesisStatus.SUPPORTED)
+                return FindingPipelineResult(HypothesisStatus.SUPPORTED, None, decision)
             finding_id = self._create_or_merge_finding(hypothesis, evidence, category, endpoints, decision, "supported")
             return FindingPipelineResult(hypothesis.status, finding_id, decision)
 
@@ -192,8 +206,15 @@ class FindingPipeline:
             raise ConfirmationInvariantError(
                 f"cannot confirm hypothesis {hypothesis.id}: {', '.join(problems)}")
         self._safe_transition(hypothesis.id, HypothesisStatus.CONFIRMED)
-        return self._create_or_merge_finding(
+        finding_id = self._create_or_merge_finding(
             hypothesis, evidence, category, endpoints, decision, "confirmed", critic_review_id)
+        from adi.source.repository import SourceWorkspace
+        source = SourceWorkspace(self.workspace)
+        snapshot = source.load()
+        if category == "broken_object_authorization" and snapshot and not snapshot.repository.stale:
+            source.correlate()
+            source.enrich_finding(finding_id)
+        return finding_id
 
     def _safe_transition(self, hypothesis_id: str, target: HypothesisStatus) -> None:
         try:

@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 
 class ActionType(str, Enum):
+    SOURCE_ACTION = "source_action"
     RUN_TOOL = "run_tool"
     HTTP_REQUEST = "http_request"
     BROWSER_ACTION = "browser_action"

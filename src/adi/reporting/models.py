@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 
 
 class FindingReport(BaseModel):
@@ -33,6 +33,11 @@ class FindingReport(BaseModel):
     references: list[str] = Field(default_factory=list)
     critic_summary: str = ""
     validation_summary: str = ""
+    root_cause: dict = Field(default_factory=dict)
+    source_locations: list[str] = Field(default_factory=list)
+    affected_code: list[dict] = Field(default_factory=list)
+    source_evidence: list[str] = Field(default_factory=list)
+    runtime_evidence: list[str] = Field(default_factory=list)
 
 
 class RejectedHypothesisReport(BaseModel):
@@ -82,4 +87,9 @@ class Report(BaseModel):
     positive_security_observations: list[PositiveObservationReport] = Field(default_factory=list)
     recommendations: list[str] = Field(default_factory=list)
     evidence_index: list[EvidenceIndexEntry] = Field(default_factory=list)
+    source_summary: dict = Field(default_factory=dict)
+    source_correlations: list[dict] = Field(default_factory=list)
+    dependency_vulnerabilities: list[dict] = Field(default_factory=list)
+    source_indications: list[dict] = Field(default_factory=list)
+    secret_indications: list[dict] = Field(default_factory=list)
     activity_summary: dict = Field(default_factory=dict)

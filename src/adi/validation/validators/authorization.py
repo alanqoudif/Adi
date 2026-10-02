@@ -78,6 +78,15 @@ class AuthorizationValidator:
             )
 
         if other_status is not None and other_status < 400:
+            owner_body = owner_exchange.response.body_hash if owner_exchange.response else ''
+            other_body = other_exchange.response.body_hash if other_exchange.response else ''
+            if not owner_preview.strip() or not owner_body or owner_body != other_body:
+                return ValidationResult(
+                    action_type=ValidationActionType.CHECK_OBJECT_AUTHORIZATION,
+                    outcome=ValidationOutcome.INCONCLUSIVE,
+                    detail='successful status without equivalent protected response; inspect controlled object before claiming bypass',
+                    evidence_ids=[evidence.id],
+                )
             return ValidationResult(
                 action_type=ValidationActionType.CHECK_OBJECT_AUTHORIZATION,
                 outcome=ValidationOutcome.SUPPORTS,

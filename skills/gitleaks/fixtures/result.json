@@ -1,0 +1,1 @@
+[{"RuleID":"generic-api-key","File":".env.example","StartLine":1,"Secret":"REDACTED","Match":"REDACTED","Fingerprint":".env.example:generic-api-key:1"}]

@@ -392,3 +392,11 @@ def create_engine_for(db_path: str):
 def make_session_factory(db_path: str) -> sessionmaker[Session]:
     engine = create_engine_for(db_path)
     return sessionmaker(bind=engine, expire_on_commit=False, future=True)
+
+
+class SourceSnapshotRecord(Base):
+    """Versioned typed JSON; redacted index, scans and correlations survive restart."""
+    __tablename__ = 'source_snapshot'
+    assessment_id: Mapped[str] = mapped_column(ForeignKey('assessment.id'), primary_key=True)
+    payload: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)

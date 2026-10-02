@@ -148,3 +148,16 @@ ruff check .
 
 See the phase table above and `docs/architecture.md`. Phases 1–4 are implemented.
 Source intelligence (Phase 5) and tool expansion (Phase 6) remain unstarted.
+
+### Phase 5: source code intelligence
+
+Index an operator-accessible repository with `adi audit ./repository --target <authorized-url>`.
+Use `adi source`, `adi routes`, `adi source-search`, and `adi correlations` to inspect
+bounded, redacted source intelligence. `--autonomous` uses the configured provider;
+source hypotheses validate through the existing scoped runtime/evidence/critic pipeline.
+Source alerts and affected dependencies never automatically become runtime exploits.
+
+Run `.venv/bin/python examples/phase5_smoke.py` for the real loopback FastAPI/Semgrep
+acceptance demo with a scripted planner/critic. See [Phase 5 acceptance](docs/phase5-acceptance.md)
+for exact commands, tool availability, fixture provenance, safety limits and source-enriched reports.
+Phase 6 has not started.

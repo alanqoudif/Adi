@@ -17,7 +17,10 @@ from adi.knowledge.hypotheses import Hypothesis
 
 # Evidence types that, on their own, can never be sufficient to confirm —
 # they indicate something worth investigating, not proof.
-_SCANNER_ONLY_TYPES = {EvidenceType.SCANNER_INDICATION}
+_SCANNER_ONLY_TYPES = {EvidenceType.SCANNER_INDICATION, EvidenceType.SAST_RESULT,
+                       EvidenceType.SOURCE_SNIPPET, EvidenceType.SOURCE_ROUTE,
+                       EvidenceType.SOURCE_CONFIG, EvidenceType.DEPENDENCY_RECORD,
+                       EvidenceType.SECRET_INDICATION}
 
 
 class VerificationStatus(str, Enum):
@@ -51,18 +54,22 @@ class FindingVerifier:
         if not supporting:
             return VerificationDecision(VerificationStatus.REJECTED, ["no supporting evidence"])
 
-        scanner_only = all(e.type in _SCANNER_ONLY_TYPES for e in supporting)
-        if scanner_only:
-            return VerificationDecision(
-                VerificationStatus.SUPPORTED,
-                ["supporting evidence is scanner-only — requires independent validation before confirming"],
-            )
+        if contradicting and all(e.type in _SCANNER_ONLY_TYPES for e in supporting):
+            return VerificationDecision(VerificationStatus.REJECTED,
+                ["runtime validation refutes source/scanner suspicion"])
 
         if contradicting:
             return VerificationDecision(
                 VerificationStatus.SUPPORTED,
                 [(f"{len(supporting)} supporting vs {len(contradicting)} contradicting evidence item(s) — "
                  f"contradiction present, narrow the hypothesis before confirming")],
+            )
+
+        scanner_only = all(e.type in _SCANNER_ONLY_TYPES for e in supporting)
+        if scanner_only:
+            return VerificationDecision(
+                VerificationStatus.SUPPORTED,
+                ["supporting evidence is scanner-only — requires independent validation before confirming"],
             )
 
         reproducible_types = {

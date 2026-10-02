@@ -1,0 +1,11 @@
+rules:
+  - id: adi.literal-eval
+    languages: [python]
+    severity: WARNING
+    message: Review literal parsing; distinguish from dynamic execution.
+    pattern: ast.literal_eval($INPUT)
+  - id: adi.dynamic-eval
+    languages: [python, javascript, typescript]
+    severity: WARNING
+    message: Dynamic evaluation needs input-flow and runtime review.
+    pattern: eval($INPUT)

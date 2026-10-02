@@ -129,6 +129,10 @@ class Orchestrator:
         return outcomes
 
     async def _dispatch(self, action: PlannedAction) -> StepOutcome:
+        if action.action_type == ActionType.SOURCE_ACTION or (
+            action.action_type == ActionType.RUN_TOOL and action.capability in
+            ("scan_source_patterns", "scan_secrets", "scan_dependencies")):
+            return await self._dispatch_source(action)
         if action.action_type == ActionType.RUN_TOOL:
             return await self._dispatch_run_tool(action)
         if action.action_type == ActionType.HTTP_REQUEST:
@@ -341,3 +345,51 @@ class Orchestrator:
         )
         return StepOutcome(action=action, status="failed",
                             detail=f"action type '{action.action_type.value}' is not implemented yet")
+
+    async def _dispatch_source(self, action):
+        from adi.source.index import SourceIndex
+        from adi.source.repository import SourceWorkspace
+        from adi.source.retrieval import retrieve_route_context
+        from adi.source.scanners import SourceScanner
+        source = SourceWorkspace(self.workspace)
+        try:
+            if not self.workspace.load_scope().permissions.source_analysis:
+                raise PermissionError("source analysis disabled")
+            capability = action.capability
+            snapshot = source.load() if capability == "index_source_repository" else source.require_current()
+            if snapshot is None:
+                raise PermissionError("no operator-bound source repository")
+            if capability in ("scan_source_patterns", "scan_secrets", "scan_dependencies"):
+                result = await SourceScanner(self.workspace, self.executor.registry).scan(capability)
+            elif capability == "correlate_source_runtime":
+                result = [c.model_dump() for c in source.correlate()][:20]
+            elif capability == "index_source_repository":
+                result = source.index(Path(snapshot.repository.root_path)).repository.model_dump(mode="json")
+            elif capability == "discover_source_routes":
+                result = [r.model_dump() for r in snapshot.routes[:20]]
+            elif capability in ("inspect_authentication_logic", "inspect_authorization_logic", "retrieve_source_context"):
+                routes = SourceIndex(snapshot).find_route(action.parameters.get("path", action.target or ""),
+                                                         action.parameters.get("method", "GET"))
+                result = [retrieve_route_context(snapshot, r) for r in routes[:2]]
+            elif capability == "search_source":
+                result = [l.model_dump() for l in SourceIndex(snapshot).search_text(action.parameters.get("query", ""))]
+            elif capability == "review_source_indication":
+                result = SourceScanner(self.workspace, self.executor.registry).review_indication(action.parameters["evidence_id"]).model_dump()
+            elif capability == "investigate_runtime_source":
+                source.correlate()
+                root = source.enrich_finding(action.parameters["finding_id"])
+                result = root.model_dump() if root else {"status": "no matching source"}
+            else:
+                raise ValueError("unsupported source capability")
+            from adi.source.secrets import redact_code
+            self.workspace.record_action(action_type="source_action", capability=capability,
+                target=snapshot.repository.root_path, parameters_json="{}",
+                reason_summary=redact_code(action.reason_summary), scope_allowed=True,
+                scope_reason="bounded operator-bound source analysis", status="completed")
+            from adi.knowledge.observations import Observation, ObservationType
+            self.workspace.record_observation(Observation(
+                type=ObservationType.SOURCE_PATTERN,
+                subject=capability, value={"source_context": result}, source="source"))
+            return StepOutcome(action=action, status="completed", detail=str(result)[:16000])
+        except (ValueError, KeyError, PermissionError, OSError) as exc:
+            return StepOutcome(action=action, status="blocked", detail=str(exc))
