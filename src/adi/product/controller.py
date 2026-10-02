@@ -181,6 +181,14 @@ class ProductController:
                 return
 
             for outcome in outcomes:
+                # `orchestrator.run(max_iterations=1)` emits a "stopped:
+                # max_iterations reached" outcome after every single
+                # action purely because *this call* was capped at one
+                # iteration — that is our own per-call limiter, not a
+                # genuine end-of-assessment condition, so it must not
+                # terminate the controller's driving loop.
+                if outcome.status == "stopped" and outcome.detail == "max_iterations reached":
+                    continue
                 await self._emit_for_outcome(outcome)
                 if outcome.status in ("completed_assessment", "paused", "stopped"):
                     self.state = (
