@@ -23,9 +23,9 @@ NMAP_XML_FIXTURE = (
 
 
 def make_action(**overrides) -> PlannedAction:
-    defaults = dict(action_type=ActionType.RUN_TOOL, tool="nmap", target="lab.local",
-                     capability="enumerate_services", parameters={},
-                     reason_summary="r", expected_information_gain="g")
+    defaults = {"action_type": ActionType.RUN_TOOL, "tool": "nmap", "target": "lab.local",
+                     "capability": "enumerate_services", "parameters": {},
+                     "reason_summary": "r", "expected_information_gain": "g"}
     defaults.update(overrides)
     return PlannedAction(**defaults)
 
@@ -79,7 +79,7 @@ async def test_duplicate_action_is_skipped_not_reexecuted(tmp_path):
         make_action(),  # identical -> should be skipped, not re-run
         make_action(action_type=ActionType.COMPLETE, tool=None, target=None),
     )
-    orchestrator, workspace, runtime = build_orchestrator(tmp_path, llm)
+    orchestrator, _workspace, runtime = build_orchestrator(tmp_path, llm)
 
     outcomes = await orchestrator.run()
 

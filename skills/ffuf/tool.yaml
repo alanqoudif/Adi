@@ -1,0 +1,30 @@
+name: ffuf
+
+category:
+  - web
+  - content-discovery
+
+description: >
+  Fast web fuzzer for content discovery and parameter fuzzing.
+
+capabilities:
+  - discover_web_content
+
+risk_level: low
+
+requires:
+  target: true
+
+supports:
+  url: true
+
+output:
+  machine_readable: true
+  preferred_format: json
+
+execution:
+  timeout_seconds: 300
+  priority: 20
+
+scope_requirements:
+  target_must_be_authorized: true

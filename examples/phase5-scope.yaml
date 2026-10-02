@@ -1,0 +1,18 @@
+name: Phase 5 controlled loopback lab
+mode: source_and_runtime
+targets:
+  - http://127.0.0.1:8765
+permissions:
+  source_analysis: true
+  authentication_testing: true
+  active_validation: true
+test_accounts:
+  - name: user_a
+    username: user_a
+  - name: user_b
+    username: user_b
+notes:
+  - Local fake identities only; user_a owns order 1 and user_b owns order 2.
+  - Authenticate via POST /api/login?username=user_a and username=user_b with their named session IDs.
+  - Compare only those controlled orders; do not use detected repository secrets.
+max_actions: 40

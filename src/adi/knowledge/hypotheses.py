@@ -20,6 +20,7 @@ class HypothesisStatus(str, Enum):
     NEW = "new"
     INVESTIGATING = "investigating"
     SUPPORTED = "supported"
+    VALIDATING = "validating"  # Phase 4: a validation plan is actively executing
     CONFIRMED = "confirmed"
     REJECTED = "rejected"
     BLOCKED = "blocked"
@@ -43,9 +44,16 @@ _VALID_TRANSITIONS: dict[HypothesisStatus, set[HypothesisStatus]] = {
         HypothesisStatus.DUPLICATE,
     },
     HypothesisStatus.SUPPORTED: {
+        HypothesisStatus.VALIDATING,
         HypothesisStatus.CONFIRMED,
         HypothesisStatus.REJECTED,
         HypothesisStatus.INVESTIGATING,
+        HypothesisStatus.BLOCKED,
+    },
+    HypothesisStatus.VALIDATING: {
+        HypothesisStatus.CONFIRMED,
+        HypothesisStatus.REJECTED,
+        HypothesisStatus.SUPPORTED,  # critic sent it back for more evidence
         HypothesisStatus.BLOCKED,
     },
     HypothesisStatus.BLOCKED: {

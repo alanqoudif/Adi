@@ -9,10 +9,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from adi.agent.context_builder import ContextBuilder
+from adi.agent.critic import Critic
 from adi.agent.orchestrator import Orchestrator
 from adi.agent.planner import Planner
 from adi.agent.scheduler import ActionBudget
 from adi.config.models import AdiConfig
+from adi.evidence.store import EvidenceStore
+from adi.findings.pipeline import FindingPipeline
+from adi.http.client import HTTPClient
+from adi.http.sessions import SessionJarRegistry
+from adi.http.workspace import HTTPWorkspace
 from adi.knowledge.workspace import Workspace
 from adi.llm.base import LLMProvider
 from adi.runtime.docker_runtime import DockerKaliRuntime
@@ -21,8 +27,11 @@ from adi.runtime.process import ExecutionRuntime
 from adi.runtime.shell import LocalRuntime
 from adi.scope.engine import ScopeEngine
 from adi.scope.models import Scope
+from adi.scope.rate_limiter import RateLimiter
 from adi.tools.executor import ToolExecutor
 from adi.tools.registry import ToolRegistry
+from adi.validation.context import ValidationContext
+from adi.validation.engine import ValidationEngine
 
 
 def assessments_root(project_root: Path | None = None) -> Path:
@@ -67,6 +76,8 @@ class Assessment:
     registry: ToolRegistry
     runtime: ExecutionRuntime
     executor: ToolExecutor
+    http_workspace: HTTPWorkspace
+    rate_limiter: RateLimiter
     directory: Path
 
     @property
@@ -105,15 +116,19 @@ class Assessment:
         registry.discover()
         runtime = build_runtime(config, workspace_dir=directory / "raw")
         raw_dir = directory / "raw"
-        executor = ToolExecutor(registry, runtime, scope_engine, workspace, raw_dir)
+        rate_limiter = RateLimiter(scope.rate_limits)
+        executor = ToolExecutor(registry, runtime, scope_engine, workspace, raw_dir, rate_limiter=rate_limiter)
+        http_client = HTTPClient(scope_engine, SessionJarRegistry(), rate_limiter=rate_limiter)
+        http_workspace = HTTPWorkspace(http_client, workspace, directory / "evidence")
         return cls(
             workspace=workspace, scope_engine=scope_engine, registry=registry,
-            runtime=runtime, executor=executor, directory=directory,
+            runtime=runtime, executor=executor, http_workspace=http_workspace,
+            rate_limiter=rate_limiter, directory=directory,
         )
 
     def build_orchestrator(self, llm: LLMProvider) -> Orchestrator:
-        """Wire a Phase 2 autonomous agent loop against this assessment's
-        existing workspace/scope/executor — see `adi.agent.orchestrator`."""
+        """Wire the autonomous agent loop against this assessment's existing
+        workspace/scope/executor/HTTP workspace — see `adi.agent.orchestrator`."""
         scope = self.workspace.load_scope()
         context_builder = ContextBuilder(self.workspace, scope, self.registry, goal=scope.goal)
         planner = Planner(llm)
@@ -122,7 +137,17 @@ class Assessment:
             max_consecutive_failures=scope.max_consecutive_failures,
         )
         budget.actions_taken = len(self.workspace.list_actions())
-        return Orchestrator(self.workspace, self.executor, planner, context_builder, budget)
+
+        evidence_store = EvidenceStore(self.workspace)
+        validation_engine = ValidationEngine(
+            ValidationContext(self.http_workspace, evidence_store, self.workspace)
+        )
+        finding_pipeline = FindingPipeline(self.workspace, evidence_store, critic=Critic(llm))
+
+        return Orchestrator(self.workspace, self.executor, planner, context_builder, budget,
+                             http_workspace=self.http_workspace,
+                             validation_engine=validation_engine, finding_pipeline=finding_pipeline,
+                             report_directory=self.directory / "reports")
 
     @staticmethod
     def list_ids(project_root: Path | None = None) -> list[str]:

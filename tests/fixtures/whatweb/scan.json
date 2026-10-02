@@ -1,0 +1,12 @@
+[
+  {
+    "target": "http://127.0.0.1:8080/",
+    "http_status": 200,
+    "plugins": {
+      "HTTPServer": {"string": ["nginx/1.18.0"]},
+      "Cookies": {"string": ["connect.sid"]},
+      "X-Powered-By": {"string": ["Express"]},
+      "Title": {"string": ["Demo App"]}
+    }
+  }
+]

@@ -20,3 +20,9 @@ execution:
 ui:
   show_reason_summaries: true
   verbose_tool_output: false
+
+# Optional — content-discovery tools (ffuf/feroxbuster) use this before
+# falling back to common Kali/Homebrew SecLists/dirb install paths.
+# See adi.tools.wordlists.
+wordlists:
+  web_content: /usr/share/seclists/Discovery/Web-Content/common.txt

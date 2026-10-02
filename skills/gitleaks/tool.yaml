@@ -1,0 +1,16 @@
+capabilities:
+- scan_secrets
+category:
+- source
+description: Offline repository scan_secrets; indications only
+execution:
+  priority: 10
+  timeout_seconds: 120
+name: gitleaks
+output:
+  machine_readable: true
+  preferred_format: json
+requires:
+  target: true
+scope_requirements:
+  target_must_be_authorized: true

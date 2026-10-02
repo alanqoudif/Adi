@@ -17,14 +17,20 @@ from sqlalchemy.orm import Session, sessionmaker
 from adi.knowledge.db import (
     ActionRecord,
     AssessmentRecord,
+    CriticReviewRecord,
     EndpointRecord,
+    EvidenceRecord,
     FindingRecord,
     HostRecord,
+    HttpExchangeRecord,
     HypothesisRecord,
     ObservationRecord,
     ParameterRecord,
+    PositiveObservationRecord,
     ServiceRecord,
     SessionRecord,
+    ValidationActionRecord,
+    ValidationBudgetRecord,
     make_session_factory,
     new_id,
 )
@@ -83,6 +89,26 @@ class Workspace:
             record = session.get(AssessmentRecord, self.assessment_id)
             assert record is not None
             return Scope.model_validate_json(record.scope_json)
+
+    def assessment_status(self) -> str:
+        with self._session_factory() as session:
+            return session.get(AssessmentRecord, self.assessment_id).status
+
+    def set_assessment_status(self, status: str) -> None:
+        with self._session_factory() as session:
+            session.get(AssessmentRecord, self.assessment_id).status = status
+            session.commit()
+
+    def validation_limit(self, hypothesis_id: str, default: int = 8, *, persist: bool = True) -> int:
+        with self._session_factory() as session:
+            row = session.get(ValidationBudgetRecord, hypothesis_id)
+            if row is None and not persist:
+                return default
+            if row is None:
+                row = ValidationBudgetRecord(hypothesis_id=hypothesis_id, max_actions=default)
+                session.add(row)
+                session.commit()
+            return row.max_actions
 
     # -- hosts / services ----------------------------------------------------
 
@@ -292,6 +318,26 @@ class Workspace:
             session.expunge_all()
             return list(rows)
 
+    # -- HTTP exchanges ----------------------------------------------------
+
+    def record_http_exchange(self, **fields) -> str:
+        exchange_id = new_id("http")
+        with self._session_factory() as session:
+            record = HttpExchangeRecord(id=exchange_id, assessment_id=self.assessment_id, **fields)
+            session.add(record)
+            session.commit()
+        return exchange_id
+
+    def list_http_exchanges(self) -> list[HttpExchangeRecord]:
+        with self._session_factory() as session:
+            rows = session.execute(
+                select(HttpExchangeRecord)
+                .where(HttpExchangeRecord.assessment_id == self.assessment_id)
+                .order_by(HttpExchangeRecord.started_at)
+            ).scalars().all()
+            session.expunge_all()
+            return list(rows)
+
     # -- observations ---------------------------------------------------------
 
     def record_observation(self, observation: Observation) -> str:
@@ -385,6 +431,12 @@ class Workspace:
     # -- actions (audit trail) ------------------------------------------------
 
     def record_action(self, **kwargs) -> str:
+        from adi.reporting.redaction import known_secrets, redact_structure
+        secrets = known_secrets(self.load_scope())
+        if "parameters_json" in kwargs:
+            kwargs["parameters_json"] = json.dumps(
+                redact_structure(json.loads(kwargs["parameters_json"]), secrets))
+        kwargs = redact_structure(kwargs, secrets)
         action_id = new_id("act")
         with self._session_factory() as session:
             record = ActionRecord(id=action_id, assessment_id=self.assessment_id, **kwargs)
@@ -444,10 +496,29 @@ class Workspace:
             session.expunge_all()
             return list(rows)
 
+    def _check_confirmed_record(self, record) -> None:
+        if record.status != "confirmed":
+            return
+        evidence_ids = json.loads(record.evidence_ids_json or "[]")
+        hypotheses = {h.id for h in self.list_hypotheses()}
+        if record.hypothesis_id not in hypotheses or not evidence_ids:
+            raise ValueError("confirmed finding requires a hypothesis and evidence")
+        if not all(self.get_evidence(eid) is not None for eid in evidence_ids):
+            raise ValueError("confirmed finding has missing evidence")
+        validations = self.list_validation_actions(record.hypothesis_id)
+        if not any(v.scope_allowed and v.outcome == "supports"
+                   and set(json.loads(v.evidence_ids_json)) & set(evidence_ids) for v in validations):
+            raise ValueError("confirmed finding requires scope-authorized supporting validation")
+        if record.critic_review_id:
+            review = self.get_critic_review(record.critic_review_id)
+            if review is None or review.hypothesis_id != record.hypothesis_id or review.decision != "accept":
+                raise ValueError("confirmed finding requires an accepted linked critic review")
+
     def create_finding(self, **fields) -> str:
         finding_id = new_id("find")
         with self._session_factory() as session:
             record = FindingRecord(id=finding_id, assessment_id=self.assessment_id, **fields)
+            self._check_confirmed_record(record)
             session.add(record)
             session.commit()
         return finding_id
@@ -459,3 +530,154 @@ class Workspace:
             ).scalars().all()
             session.expunge_all()
             return list(rows)
+
+    def get_finding(self, finding_id: str) -> FindingRecord | None:
+        with self._session_factory() as session:
+            record = session.get(FindingRecord, finding_id)
+            if record is not None:
+                session.expunge(record)
+            return record
+
+    def update_finding(self, finding_id: str, **fields) -> None:
+        with self._session_factory() as session:
+            record = session.get(FindingRecord, finding_id)
+            if record is None:
+                raise ValueError(f"no finding '{finding_id}'")
+            for key, value in fields.items():
+                setattr(record, key, value)
+            self._check_confirmed_record(record)
+            session.commit()
+
+    # -- evidence (Phase 4) -----------------------------------------------------
+
+    def record_evidence(self, **fields) -> str:
+        evidence_id = new_id("ev")
+        with self._session_factory() as session:
+            record = EvidenceRecord(id=evidence_id, assessment_id=self.assessment_id, **fields)
+            session.add(record)
+            session.commit()
+        return evidence_id
+
+    def get_evidence(self, evidence_id: str) -> EvidenceRecord | None:
+        with self._session_factory() as session:
+            record = session.get(EvidenceRecord, evidence_id)
+            if record is not None:
+                session.expunge(record)
+            return record
+
+    def link_evidence_to_finding(self, evidence_id: str, finding_id: str) -> None:
+        with self._session_factory() as session:
+            record = session.get(EvidenceRecord, evidence_id)
+            if record is None:
+                raise ValueError(f"no evidence '{evidence_id}'")
+            linked = json.loads(record.related_finding_ids_json)
+            if finding_id not in linked:
+                linked.append(finding_id)
+            record.related_finding_ids_json = json.dumps(linked)
+            session.commit()
+
+    def attach_evidence_exchanges(self, evidence_id: str, exchange_ids: list[str]) -> None:
+        with self._session_factory() as session:
+            row = session.get(EvidenceRecord, evidence_id)
+            metadata = json.loads(row.metadata_json)
+            metadata["http_exchange_ids"] = exchange_ids
+            row.metadata_json = json.dumps(metadata)
+            row.raw_reference = ", ".join(exchange_ids) or row.raw_reference
+            session.commit()
+
+    def list_evidence(self) -> list[EvidenceRecord]:
+        with self._session_factory() as session:
+            rows = session.execute(
+                select(EvidenceRecord).where(EvidenceRecord.assessment_id == self.assessment_id)
+                .order_by(EvidenceRecord.created_at)
+            ).scalars().all()
+            session.expunge_all()
+            return list(rows)
+
+    # -- validation actions (Phase 4) --------------------------------------------
+
+    def record_validation_action(self, **fields) -> str:
+        action_id = new_id("val")
+        with self._session_factory() as session:
+            record = ValidationActionRecord(id=action_id, assessment_id=self.assessment_id, **fields)
+            session.add(record)
+            session.commit()
+        return action_id
+
+    def list_validation_actions(self, hypothesis_id: str | None = None) -> list[ValidationActionRecord]:
+        with self._session_factory() as session:
+            stmt = select(ValidationActionRecord).where(
+                ValidationActionRecord.assessment_id == self.assessment_id
+            )
+            if hypothesis_id is not None:
+                stmt = stmt.where(ValidationActionRecord.hypothesis_id == hypothesis_id)
+            rows = session.execute(stmt.order_by(ValidationActionRecord.created_at)).scalars().all()
+            session.expunge_all()
+            return list(rows)
+
+    # -- positive security observations (Phase 4) ---------------------------------
+
+    def record_positive_observation(self, **fields) -> str:
+        obs_id = new_id("pos")
+        with self._session_factory() as session:
+            session.add(PositiveObservationRecord(
+                id=obs_id, assessment_id=self.assessment_id, **fields))
+            session.commit()
+        return obs_id
+
+    def list_positive_observations(self) -> list[PositiveObservationRecord]:
+        with self._session_factory() as session:
+            rows = session.execute(
+                select(PositiveObservationRecord).where(
+                    PositiveObservationRecord.assessment_id == self.assessment_id)
+                .order_by(PositiveObservationRecord.created_at)
+            ).scalars().all()
+            session.expunge_all()
+            return list(rows)
+
+    # -- critic reviews (Phase 4) -------------------------------------------------
+
+    def record_critic_review(self, **fields) -> str:
+        review_id = new_id("crit")
+        with self._session_factory() as session:
+            record = CriticReviewRecord(id=review_id, assessment_id=self.assessment_id, **fields)
+            session.add(record)
+            session.commit()
+        return review_id
+
+    def get_critic_review(self, review_id: str) -> CriticReviewRecord | None:
+        with self._session_factory() as session:
+            record = session.get(CriticReviewRecord, review_id)
+            if record is not None:
+                session.expunge(record)
+            return record
+
+    def list_critic_reviews(self, hypothesis_id: str | None = None) -> list[CriticReviewRecord]:
+        with self._session_factory() as session:
+            stmt = select(CriticReviewRecord).where(
+                CriticReviewRecord.assessment_id == self.assessment_id
+            )
+            if hypothesis_id is not None:
+                stmt = stmt.where(CriticReviewRecord.hypothesis_id == hypothesis_id)
+            rows = session.execute(stmt.order_by(CriticReviewRecord.created_at)).scalars().all()
+            session.expunge_all()
+            return list(rows)
+
+    def save_source(self, snapshot) -> None:
+        from adi.knowledge.db import SourceSnapshotRecord
+        payload = snapshot.model_dump_json()
+        with self._session_factory() as session:
+            record = session.get(SourceSnapshotRecord, self.assessment_id)
+            if record is None:
+                record = SourceSnapshotRecord(assessment_id=self.assessment_id, payload=payload)
+                session.add(record)
+            else:
+                record.payload = payload
+            session.commit()
+
+    def load_source(self):
+        from adi.knowledge.db import SourceSnapshotRecord
+        from adi.source.models import SourceSnapshot
+        with self._session_factory() as session:
+            record = session.get(SourceSnapshotRecord, self.assessment_id)
+            return SourceSnapshot.model_validate_json(record.payload) if record else None

@@ -1,0 +1,1 @@
+{"results":[{"check_id":"adi.literal-eval","path":"src/routes/orders.py","start":{"line":44},"end":{"line":45},"extra":{"severity":"WARNING","message":"Review literal parsing; distinguish from dynamic execution.","metadata":{}}}]}

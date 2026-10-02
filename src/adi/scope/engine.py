@@ -62,22 +62,19 @@ class ScopeEngine:
                 f"({self.scope.name}); record as external dependency instead",
             )
 
-        if action.capability in _AUTH_TESTING_CAPABILITIES:
-            if not self.scope.permissions.authentication_testing:
-                return ScopeDecision(
-                    False,
-                    "authentication_testing is disabled for this assessment scope",
-                )
+        if (action.capability in _AUTH_TESTING_CAPABILITIES) and not self.scope.permissions.authentication_testing:
+            return ScopeDecision(
+                False,
+                "authentication_testing is disabled for this assessment scope",
+            )
 
-        if action.capability in _ACTIVE_VALIDATION_CAPABILITIES:
-            if not self.scope.permissions.active_validation:
-                return ScopeDecision(
-                    False, "active_validation is disabled for this assessment scope"
-                )
+        if (action.capability in _ACTIVE_VALIDATION_CAPABILITIES) and not self.scope.permissions.active_validation:
+            return ScopeDecision(
+                False, "active_validation is disabled for this assessment scope"
+            )
 
-        if action.action_type == ActionType.SEARCH_CODE or action.capability.startswith("source"):
-            if not self.scope.permissions.source_analysis:
-                return ScopeDecision(False, "source_analysis is disabled for this assessment scope")
+        if (action.action_type == ActionType.SEARCH_CODE or action.capability.startswith("source")) and not self.scope.permissions.source_analysis:
+            return ScopeDecision(False, "source_analysis is disabled for this assessment scope")
 
         if action.capability.startswith("discover") and not self.scope.permissions.discovery:
             return ScopeDecision(False, "discovery is disabled for this assessment scope")
@@ -91,6 +88,12 @@ class ScopeEngine:
             )
 
         return ScopeDecision(True, "within scope")
+
+    def is_host_authorized(self, host: str) -> bool:
+        """Used outside the PlannedAction flow — e.g. per-hop redirect
+        authorization in `adi.http.client.HTTPClient`, where there is no
+        single action to build a ScopeDecision for."""
+        return self.scope.host_is_target(host)
 
     @staticmethod
     def _extract_host(target: str | None) -> str | None:

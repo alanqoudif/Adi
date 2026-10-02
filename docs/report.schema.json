@@ -1,0 +1,419 @@
+{
+  "$defs": {
+    "EvidenceIndexEntry": {
+      "properties": {
+        "display_id": {
+          "title": "Display Id",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "subject": {
+          "title": "Subject",
+          "type": "string"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "hash": {
+          "title": "Hash",
+          "type": "string"
+        },
+        "timestamp": {
+          "default": "",
+          "title": "Timestamp",
+          "type": "string"
+        },
+        "raw_reference": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Raw Reference"
+        },
+        "http_exchange_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Http Exchange Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "display_id",
+        "id",
+        "type",
+        "source",
+        "subject",
+        "summary",
+        "hash"
+      ],
+      "title": "EvidenceIndexEntry",
+      "type": "object"
+    },
+    "FindingReport": {
+      "properties": {
+        "display_id": {
+          "title": "Display Id",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "severity": {
+          "title": "Severity",
+          "type": "string"
+        },
+        "confidence": {
+          "title": "Confidence",
+          "type": "number"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "category": {
+          "title": "Category",
+          "type": "string"
+        },
+        "hypothesis_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hypothesis Id"
+        },
+        "validation_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Validation Ids",
+          "type": "array"
+        },
+        "critic_review_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Critic Review Id"
+        },
+        "affected_assets": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Affected Assets",
+          "type": "array"
+        },
+        "affected_component": {
+          "title": "Affected Component",
+          "type": "string"
+        },
+        "affected_endpoints": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Affected Endpoints",
+          "type": "array"
+        },
+        "affected_roles": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Affected Roles",
+          "type": "array"
+        },
+        "security_property": {
+          "default": "",
+          "title": "Security Property",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "observed_behavior": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Observed Behavior",
+          "type": "array"
+        },
+        "expected_secure_behavior": {
+          "default": "",
+          "title": "Expected Secure Behavior",
+          "type": "string"
+        },
+        "validation_performed": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Validation Performed",
+          "type": "array"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "impact": {
+          "default": "",
+          "title": "Impact",
+          "type": "string"
+        },
+        "remediation": {
+          "default": "",
+          "title": "Remediation",
+          "type": "string"
+        },
+        "references": {
+          "items": {
+            "type": "string"
+          },
+          "title": "References",
+          "type": "array"
+        },
+        "critic_summary": {
+          "default": "",
+          "title": "Critic Summary",
+          "type": "string"
+        },
+        "validation_summary": {
+          "default": "",
+          "title": "Validation Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "display_id",
+        "id",
+        "title",
+        "severity",
+        "confidence",
+        "status",
+        "category",
+        "affected_component"
+      ],
+      "title": "FindingReport",
+      "type": "object"
+    },
+    "PositiveObservationReport": {
+      "properties": {
+        "display_id": {
+          "title": "Display Id",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "asset": {
+          "default": "",
+          "title": "Asset",
+          "type": "string"
+        },
+        "created_at": {
+          "default": "",
+          "title": "Created At",
+          "type": "string"
+        },
+        "category": {
+          "title": "Category",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "endpoint": {
+          "default": "",
+          "title": "Endpoint",
+          "type": "string"
+        },
+        "session": {
+          "default": "",
+          "title": "Session",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "display_id",
+        "id",
+        "category",
+        "title",
+        "summary"
+      ],
+      "title": "PositiveObservationReport",
+      "type": "object"
+    },
+    "RejectedHypothesisReport": {
+      "properties": {
+        "display_id": {
+          "title": "Display Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "category": {
+          "title": "Category",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "display_id",
+        "title",
+        "category",
+        "reason"
+      ],
+      "title": "RejectedHypothesisReport",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "assessment": {
+      "additionalProperties": true,
+      "title": "Assessment",
+      "type": "object"
+    },
+    "scope": {
+      "additionalProperties": true,
+      "title": "Scope",
+      "type": "object"
+    },
+    "attack_surface": {
+      "additionalProperties": true,
+      "title": "Attack Surface",
+      "type": "object"
+    },
+    "executive_summary": {
+      "additionalProperties": true,
+      "title": "Executive Summary",
+      "type": "object"
+    },
+    "methodology": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Methodology",
+      "type": "array"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/FindingReport"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "supported_items": {
+      "items": {
+        "$ref": "#/$defs/FindingReport"
+      },
+      "title": "Supported Items",
+      "type": "array"
+    },
+    "rejected_hypotheses": {
+      "items": {
+        "$ref": "#/$defs/RejectedHypothesisReport"
+      },
+      "title": "Rejected Hypotheses",
+      "type": "array"
+    },
+    "positive_security_observations": {
+      "items": {
+        "$ref": "#/$defs/PositiveObservationReport"
+      },
+      "title": "Positive Security Observations",
+      "type": "array"
+    },
+    "recommendations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Recommendations",
+      "type": "array"
+    },
+    "evidence_index": {
+      "items": {
+        "$ref": "#/$defs/EvidenceIndexEntry"
+      },
+      "title": "Evidence Index",
+      "type": "array"
+    },
+    "activity_summary": {
+      "additionalProperties": true,
+      "title": "Activity Summary",
+      "type": "object"
+    }
+  },
+  "required": [
+    "assessment",
+    "scope",
+    "attack_surface",
+    "executive_summary",
+    "methodology"
+  ],
+  "title": "Report",
+  "type": "object"
+}

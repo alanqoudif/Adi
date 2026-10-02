@@ -4,7 +4,7 @@ from adi.scope.models import Permissions, Scope
 
 
 def make_scope(**overrides) -> Scope:
-    defaults = dict(name="test", targets=["lab.local"], allowed_ips=["10.10.10.0/24"])
+    defaults = {"name": "test", "targets": ["lab.local"], "allowed_ips": ["10.10.10.0/24"]}
     defaults.update(overrides)
     return Scope(**defaults)
 

@@ -17,6 +17,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+phase5-lab = ["fastapi>=0.115,<0.142", "uvicorn>=0.30"]
+source-tools = ["semgrep>=1.100"]
 docker = ["docker>=7.0"]
 browser = ["playwright>=1.42"]
 anthropic = ["anthropic>=0.40"]

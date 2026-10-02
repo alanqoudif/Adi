@@ -7,7 +7,9 @@ let the registry resolve candidate tools — see spec section 51.
 
 from __future__ import annotations
 
+import logging
 import shutil
+import sys
 from pathlib import Path
 
 import yaml
@@ -34,6 +36,7 @@ class ToolExecutionSpec(BaseModel):
     timeout_seconds: int = 300
     default_concurrency: int = 1
     binary: str | None = None  # defaults to tool name
+    priority: int = 100  # lower runs first when multiple tools share a capability
 
 
 class ToolScopeRequirements(BaseModel):
@@ -82,10 +85,14 @@ class ToolRegistry:
                 raw = yaml.safe_load(tool_yaml.read_text()) or {}
                 metadata = ToolMetadata.model_validate(raw)
                 metadata.skill_dir = tool_yaml.parent
-            except Exception:  # malformed skill shouldn't crash discovery
+            except (OSError, ValueError, yaml.YAMLError) as exc:
+                logging.getLogger(__name__).debug("Invalid tool skill %s: %s", tool_yaml, exc)
                 continue
             binary = metadata.execution.binary or metadata.name
             binary_path = shutil.which(binary)
+            venv_binary = Path(sys.executable).parent / binary
+            if binary_path is None and venv_binary.is_file():
+                binary_path = str(venv_binary)
             self._tools[metadata.name] = RegisteredTool(
                 metadata=metadata,
                 available=binary_path is not None,
@@ -101,6 +108,18 @@ class ToolRegistry:
 
     def available_by_capability(self, capability: str) -> list[RegisteredTool]:
         return [t for t in self.by_capability(capability) if t.available]
+
+    def resolve(self, capability: str) -> RegisteredTool | None:
+        """Phase 3I: capability-first tool selection. The planner asks for
+        a capability (e.g. 'discover_web_content'), never a specific binary
+        — this picks the best *available* tool for it, deterministically
+        (lowest `execution.priority`, then name, so the choice never
+        silently changes run to run)."""
+        candidates = sorted(
+            self.available_by_capability(capability),
+            key=lambda t: (t.metadata.execution.priority, t.metadata.name),
+        )
+        return candidates[0] if candidates else None
 
     def all(self) -> list[RegisteredTool]:
         return list(self._tools.values())

@@ -55,7 +55,7 @@ class DockerKaliRuntime(ExecutionRuntime):
             client.ping()
             client.images.get(self.image)
             return True
-        except Exception:
+        except Exception:  # noqa: BLE001 - optional Docker SDK and transport exception boundary
             return False
 
     async def execute(self, argv, *, timeout=300, cwd=None, env=None) -> ExecutionResult:
@@ -95,7 +95,7 @@ class DockerKaliRuntime(ExecutionRuntime):
         try:
             result = container.wait(timeout=timeout)
             exit_code = result.get("StatusCode", 1)
-        except Exception:
+        except Exception:  # noqa: BLE001 - optional Docker SDK and transport exception boundary
             timed_out = True
             exit_code = -1
             container.kill()

@@ -18,6 +18,7 @@ duplicate their logic.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from pydantic import BaseModel
 
@@ -26,10 +27,18 @@ from adi.agent.context_builder import ContextBuilder
 from adi.agent.planner import Planner
 from adi.agent.reasoner import HypothesisEngine, InvalidHypothesisTransitionError
 from adi.agent.scheduler import ActionBudget
+from adi.findings.pipeline import ConfirmationInvariantError, FindingPipeline
+from adi.http.workspace import HTTPWorkspace
 from adi.knowledge.hypotheses import HypothesisStatus
 from adi.knowledge.workspace import Workspace
 from adi.llm.base import LLMError, MalformedResponseError
 from adi.tools.executor import ScopeViolationError, ToolExecutionError, ToolExecutor
+from adi.validation.engine import (
+    HypothesisAlreadyResolvedError,
+    ValidationBudgetExhaustedError,
+    ValidationEngine,
+)
+from adi.validation.models import ValidationAction, ValidationActionType
 
 _TERMINAL_ACTION_TYPES = {ActionType.COMPLETE, ActionType.ASK_USER}
 
@@ -50,6 +59,10 @@ class Orchestrator:
         planner: Planner,
         context_builder: ContextBuilder,
         budget: ActionBudget | None = None,
+        http_workspace: HTTPWorkspace | None = None,
+        validation_engine: ValidationEngine | None = None,
+        finding_pipeline: FindingPipeline | None = None,
+        report_directory: Path | None = None,
     ):
         self.workspace = workspace
         self.executor = executor
@@ -57,6 +70,10 @@ class Orchestrator:
         self.context_builder = context_builder
         self.hypothesis_engine = HypothesisEngine(workspace)
         self.budget = budget or ActionBudget()
+        self.http_workspace = http_workspace
+        self.validation_engine = validation_engine
+        self.finding_pipeline = finding_pipeline
+        self.report_directory = report_directory
 
     async def run(self, max_iterations: int | None = None) -> list[StepOutcome]:
         outcomes: list[StepOutcome] = []
@@ -87,9 +104,11 @@ class Orchestrator:
                 break
 
             if action.action_type == ActionType.COMPLETE:
+                self.workspace.set_assessment_status("completed")
                 outcomes.append(StepOutcome(action=action, status="completed_assessment", detail=action.reason_summary))
                 break
             if action.action_type == ActionType.ASK_USER:
+                self.workspace.set_assessment_status("paused")
                 outcomes.append(StepOutcome(action=action, status="paused", detail=action.reason_summary))
                 break
 
@@ -110,26 +129,114 @@ class Orchestrator:
         return outcomes
 
     async def _dispatch(self, action: PlannedAction) -> StepOutcome:
+        if action.action_type == ActionType.SOURCE_ACTION or (
+            action.action_type == ActionType.RUN_TOOL and action.capability in
+            ("scan_source_patterns", "scan_secrets", "scan_dependencies")):
+            return await self._dispatch_source(action)
         if action.action_type == ActionType.RUN_TOOL:
             return await self._dispatch_run_tool(action)
+        if action.action_type == ActionType.HTTP_REQUEST:
+            return await self._dispatch_http_request(action)
         if action.action_type in (ActionType.UPDATE_HYPOTHESIS, ActionType.INVESTIGATE_HYPOTHESIS):
             return self._dispatch_hypothesis(action)
+        if action.action_type == ActionType.VERIFY_FINDING:
+            return await self._dispatch_verify_finding(action)
+        if action.action_type == ActionType.GENERATE_REPORT:
+            from adi.reporting.builder import ReportBuilder
+            from adi.reporting.json_report import write_reports
+            if self.report_directory is None:
+                return StepOutcome(action=action, status="failed", detail="no report directory configured")
+            paths = write_reports(ReportBuilder(self.workspace).build(), self.report_directory)
+            self.workspace.record_action(
+                action_type=action.action_type.value, parameters_json="{}",
+                reason_summary=action.reason_summary, scope_allowed=True,
+                scope_reason="internal report from persisted facts", status="completed")
+            return StepOutcome(action=action, status="completed",
+                               detail=", ".join(str(p) for p in paths.values()))
         return self._dispatch_unsupported(action)
 
     async def _dispatch_run_tool(self, action: PlannedAction) -> StepOutcome:
-        if not action.tool or not action.target:
-            return StepOutcome(action=action, status="failed", detail="run_tool action missing tool/target")
+        if not action.target:
+            return StepOutcome(action=action, status="failed", detail="run_tool action missing a target")
+
+        tool_name = action.tool
+        if not tool_name:
+            # Phase 3I: capability-first selection — the planner asked for a
+            # capability, not a specific binary. Resolve the best available
+            # tool deterministically; the planner never needs to know or
+            # care which one actually ran.
+            if not action.capability:
+                return StepOutcome(action=action, status="failed",
+                                    detail="run_tool action has neither a tool nor a capability to resolve")
+            resolved = self.executor.registry.resolve(action.capability)
+            if resolved is None:
+                return StepOutcome(action=action, status="failed",
+                                    detail=f"no available tool provides capability '{action.capability}'")
+            tool_name = resolved.metadata.name
+
         try:
             observations = await self.executor.run(
-                action.tool, action.target, action.parameters,
+                tool_name, action.target, action.parameters,
                 capability=action.capability, reason_summary=action.reason_summary,
             )
             return StepOutcome(action=action, status="completed",
-                                detail=f"{len(observations)} observation(s) recorded")
+                                detail=f"[{tool_name}] {len(observations)} observation(s) recorded")
         except ScopeViolationError as exc:
             return StepOutcome(action=action, status="blocked", detail=exc.reason)
         except ToolExecutionError as exc:
             return StepOutcome(action=action, status="failed", detail=str(exc))
+
+    async def _dispatch_http_request(self, action: PlannedAction) -> StepOutcome:
+        if self.http_workspace is None:
+            return StepOutcome(action=action, status="failed",
+                                detail="no HTTP workspace configured for this assessment")
+        params = action.parameters or {}
+        url = params.get("url") or action.target
+        if not url:
+            return StepOutcome(action=action, status="failed", detail="http_request action missing a url")
+
+        if action.capability == "discover_robots_sitemap":
+            # Phase 3E: a distinct, low-cost discovery capability — never
+            # run unconditionally, only when the planner chooses it.
+            observations = await self.http_workspace.discover_robots_and_sitemap(
+                url, session_id=params.get("session_id", "anonymous"),
+            )
+            self.workspace.record_action(
+                action_type=action.action_type.value, capability=action.capability,
+                tool="", target=url, parameters_json=json.dumps(params),
+                reason_summary=action.reason_summary, scope_allowed=True,
+                scope_reason="within scope", status="completed",
+            )
+            return StepOutcome(action=action, status="completed",
+                                detail=f"{len(observations)} observation(s) from robots.txt/sitemap.xml")
+
+        method = params.get("method", "GET")
+        session_id = params.get("session_id", "anonymous")
+
+        exchange, observations = await self.http_workspace.fetch_with_exchange(
+            method, url, session_id=session_id, body=params.get("body"),
+            follow_redirects=params.get("follow_redirects", False),
+            source="autonomous_http_request",
+        )
+
+        blocked = exchange.error is not None and "not within the authorized scope" in exchange.error
+        status_text = (
+            f"status {exchange.response.status}" if exchange.response else (exchange.error or "no response")
+        )
+        self.workspace.record_action(
+            action_type=action.action_type.value, capability=action.capability,
+            tool="", target=url, parameters_json=json.dumps(params),
+            reason_summary=action.reason_summary,
+            scope_allowed=not blocked, scope_reason=exchange.error or "within scope",
+            status="blocked" if blocked else ("failed" if exchange.error else "completed"),
+        )
+
+        if blocked:
+            return StepOutcome(action=action, status="blocked", detail=exchange.error)
+        if exchange.error:
+            return StepOutcome(action=action, status="failed", detail=exchange.error)
+        return StepOutcome(action=action, status="completed",
+                            detail=f"{status_text}, {len(observations)} observation(s) recorded")
 
     def _dispatch_hypothesis(self, action: PlannedAction) -> StepOutcome:
         params = action.parameters or {}
@@ -160,11 +267,73 @@ class Orchestrator:
 
         self.workspace.record_action(
             action_type=action.action_type.value, capability=action.capability,
-            tool="", target="", parameters_json=json.dumps(params),
+            tool="", target=hyp.id, parameters_json=json.dumps(params),
             reason_summary=action.reason_summary, scope_allowed=True,
             scope_reason="internal action", status="completed",
         )
         return StepOutcome(action=action, status="completed", detail=detail)
+
+    async def _dispatch_verify_finding(self, action: PlannedAction) -> StepOutcome:
+        """Phase 4 section 20: the real `verify_finding` action. Two modes,
+        selected by `parameters.mode`:
+
+        - "validate" (default): execute one typed `ValidationAction` via
+          the `ValidationEngine` — e.g. CHECK_OBJECT_AUTHORIZATION.
+        - "finalize": run the `FindingPipeline` (verifier -> critic ->
+          dedup -> severity) to turn a sufficiently-validated hypothesis
+          into a Finding, or reject it.
+        """
+        if self.validation_engine is None or self.finding_pipeline is None:
+            return StepOutcome(action=action, status="failed",
+                                detail="no validation engine configured for this assessment")
+
+        params = action.parameters or {}
+        hypothesis_id = action.related_hypothesis_id or params.get("hypothesis_id")
+        if not hypothesis_id:
+            return StepOutcome(action=action, status="failed",
+                                detail="verify_finding action missing a hypothesis_id")
+
+        mode = params.get("mode", "validate")
+        try:
+            if mode == "finalize":
+                result = await self.finding_pipeline.finalize(
+                    hypothesis_id, category=params.get("category"),
+                    affected_endpoints=params.get("affected_endpoints"),
+                )
+                detail = f"hypothesis -> {result.hypothesis_status.value}"
+                if result.finding_id:
+                    detail += f", finding {result.finding_id}"
+                if result.critic_decision:
+                    detail += f" (critic: {result.critic_decision.value})"
+                self.workspace.record_action(
+                    action_type=action.action_type.value, capability="finalize_finding",
+                    tool="", target=hypothesis_id, parameters_json=json.dumps(params),
+                    reason_summary=action.reason_summary, scope_allowed=True,
+                    scope_reason="internal action", status="completed",
+                )
+                return StepOutcome(action=action, status="completed", detail=detail)
+
+            validation_action = ValidationAction(
+                action_type=ValidationActionType(params["validation_action_type"]),
+                hypothesis_id=hypothesis_id, parameters=params.get("validation_parameters", {}),
+                reason_summary=action.reason_summary,
+            )
+            result = await self.validation_engine.execute(validation_action)
+            self.workspace.record_action(
+                action_type=action.action_type.value, capability=validation_action.action_type.value,
+                tool="", target=params.get("validation_parameters", {}).get("url", ""),
+                parameters_json=json.dumps(params), reason_summary=action.reason_summary,
+                scope_allowed=True, scope_reason="within scope", status="completed",
+            )
+            return StepOutcome(action=action, status="completed",
+                                detail=f"[{result.outcome.value}] {result.detail}")
+        except HypothesisAlreadyResolvedError as exc:
+            return StepOutcome(action=action, status="failed", detail=str(exc))
+        except (ValidationBudgetExhaustedError, ConfirmationInvariantError) as exc:
+            return StepOutcome(action=action, status="failed", detail=str(exc))
+        except (KeyError, ValueError) as exc:
+            return StepOutcome(action=action, status="failed",
+                                detail=f"malformed verify_finding action: {exc}")
 
     def _dispatch_unsupported(self, action: PlannedAction) -> StepOutcome:
         self.workspace.record_action(
@@ -176,3 +345,51 @@ class Orchestrator:
         )
         return StepOutcome(action=action, status="failed",
                             detail=f"action type '{action.action_type.value}' is not implemented yet")
+
+    async def _dispatch_source(self, action):
+        from adi.source.index import SourceIndex
+        from adi.source.repository import SourceWorkspace
+        from adi.source.retrieval import retrieve_route_context
+        from adi.source.scanners import SourceScanner
+        source = SourceWorkspace(self.workspace)
+        try:
+            if not self.workspace.load_scope().permissions.source_analysis:
+                raise PermissionError("source analysis disabled")
+            capability = action.capability
+            snapshot = source.load() if capability == "index_source_repository" else source.require_current()
+            if snapshot is None:
+                raise PermissionError("no operator-bound source repository")
+            if capability in ("scan_source_patterns", "scan_secrets", "scan_dependencies"):
+                result = await SourceScanner(self.workspace, self.executor.registry).scan(capability)
+            elif capability == "correlate_source_runtime":
+                result = [c.model_dump() for c in source.correlate()][:20]
+            elif capability == "index_source_repository":
+                result = source.index(Path(snapshot.repository.root_path)).repository.model_dump(mode="json")
+            elif capability == "discover_source_routes":
+                result = [r.model_dump() for r in snapshot.routes[:20]]
+            elif capability in ("inspect_authentication_logic", "inspect_authorization_logic", "retrieve_source_context"):
+                routes = SourceIndex(snapshot).find_route(action.parameters.get("path", action.target or ""),
+                                                         action.parameters.get("method", "GET"))
+                result = [retrieve_route_context(snapshot, r) for r in routes[:2]]
+            elif capability == "search_source":
+                result = [l.model_dump() for l in SourceIndex(snapshot).search_text(action.parameters.get("query", ""))]
+            elif capability == "review_source_indication":
+                result = SourceScanner(self.workspace, self.executor.registry).review_indication(action.parameters["evidence_id"]).model_dump()
+            elif capability == "investigate_runtime_source":
+                source.correlate()
+                root = source.enrich_finding(action.parameters["finding_id"])
+                result = root.model_dump() if root else {"status": "no matching source"}
+            else:
+                raise ValueError("unsupported source capability")
+            from adi.source.secrets import redact_code
+            self.workspace.record_action(action_type="source_action", capability=capability,
+                target=snapshot.repository.root_path, parameters_json="{}",
+                reason_summary=redact_code(action.reason_summary), scope_allowed=True,
+                scope_reason="bounded operator-bound source analysis", status="completed")
+            from adi.knowledge.observations import Observation, ObservationType
+            self.workspace.record_observation(Observation(
+                type=ObservationType.SOURCE_PATTERN,
+                subject=capability, value={"source_context": result}, source="source"))
+            return StepOutcome(action=action, status="completed", detail=str(result)[:16000])
+        except (ValueError, KeyError, PermissionError, OSError) as exc:
+            return StepOutcome(action=action, status="blocked", detail=str(exc))
