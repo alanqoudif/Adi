@@ -151,3 +151,16 @@ async def test_provider_failure_then_switch_and_continue(tmp_path):
     await shell._handle("/continue")
     await shell.controller.wait_idle()
     assert shell.controller.state == ControllerState.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_trace_and_why_commands_dispatch(tmp_path):
+    config = AdiConfig(runtime=RuntimeConfig(type="mock"))
+    shell = PlainShell(config, project_root=tmp_path)
+    shell.controller.models.add_profile(ProviderProfile(name="m", kind="mock", locality="local"))
+    await shell._handle("/new 127.0.0.1")
+
+    await shell._handle("/trace")
+    await shell._handle("/trace nonexistent-finding")
+    await shell._handle("/why")
+    await shell._handle("/why nonexistent-id")

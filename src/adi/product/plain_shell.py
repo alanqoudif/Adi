@@ -17,6 +17,7 @@ from adi.config.models import AdiConfig
 from adi.product.console import ExpertConsole
 from adi.product.controller import ControllerState, ProductController
 from adi.product.events import Event, EventType
+from adi.product.explain import build_evidence_trace, explain_why
 from adi.product.models import ProviderProfile
 from adi.product.nlu import interpret_scope_command
 from adi.product.terminal_safety import sanitize_for_terminal
@@ -42,6 +43,8 @@ Common commands:
   /tool-run <tool> <target> [k=v ...]    reviewed specific-tool request (preview + confirm)
   /attack-surface          hierarchical view of hosts/services/endpoints/source
   /source                  source intelligence summary (languages, routes, deps)
+  /trace <finding-id>      evidence trace: finding -> hypothesis -> validation -> evidence
+  /why <id>                explain an action/hypothesis/finding from stored state (no LLM)
   /pause  /continue  /stop control the assessment loop
   /report                  generate markdown + JSON reports
   /teach on|off             toggle teach mode
@@ -253,6 +256,10 @@ class PlainShell:
             self._print_attack_surface()
         elif cmd == "/source":
             self._print_source_summary()
+        elif cmd == "/trace":
+            self._print_trace(rest.strip())
+        elif cmd == "/why":
+            self._print_why(rest.strip())
         elif cmd == "/pause":
             await self.controller.pause()
             self._print("Paused — no new actions will be scheduled.")
@@ -473,6 +480,27 @@ class PlainShell:
         self._print(f"Frameworks:  {', '.join(frameworks) or '-'}")
         self._print(f"Routes:      {len(routes)}")
         self._print(f"Dependencies: {len(dependencies)}")
+
+    def _print_trace(self, finding_id: str) -> None:
+        if not self._require_assessment():
+            return
+        if not finding_id:
+            self._print("Usage: /trace <finding-id>")
+            return
+        trace = build_evidence_trace(self.controller.assessment.workspace, finding_id)
+        if trace is None:
+            self._print(f"No finding with id '{finding_id}'.")
+            return
+        for line in trace.render_lines():
+            self._print(f"  {line}")
+
+    def _print_why(self, subject_id: str) -> None:
+        if not self._require_assessment():
+            return
+        if not subject_id:
+            self._print("Usage: /why <action-id|hypothesis-id|finding-id>")
+            return
+        self._print(explain_why(self.controller.assessment.workspace, subject_id))
 
     async def _generate_report(self) -> None:
         if not self._require_assessment():
