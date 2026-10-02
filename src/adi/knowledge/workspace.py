@@ -99,9 +99,11 @@ class Workspace:
             session.get(AssessmentRecord, self.assessment_id).status = status
             session.commit()
 
-    def validation_limit(self, hypothesis_id: str, default: int = 8) -> int:
+    def validation_limit(self, hypothesis_id: str, default: int = 8, *, persist: bool = True) -> int:
         with self._session_factory() as session:
             row = session.get(ValidationBudgetRecord, hypothesis_id)
+            if row is None and not persist:
+                return default
             if row is None:
                 row = ValidationBudgetRecord(hypothesis_id=hypothesis_id, max_actions=default)
                 session.add(row)
@@ -429,6 +431,12 @@ class Workspace:
     # -- actions (audit trail) ------------------------------------------------
 
     def record_action(self, **kwargs) -> str:
+        from adi.reporting.redaction import known_secrets, redact_structure
+        secrets = known_secrets(self.load_scope())
+        if "parameters_json" in kwargs:
+            kwargs["parameters_json"] = json.dumps(
+                redact_structure(json.loads(kwargs["parameters_json"]), secrets))
+        kwargs = redact_structure(kwargs, secrets)
         action_id = new_id("act")
         with self._session_factory() as session:
             record = ActionRecord(id=action_id, assessment_id=self.assessment_id, **kwargs)
@@ -488,10 +496,29 @@ class Workspace:
             session.expunge_all()
             return list(rows)
 
+    def _check_confirmed_record(self, record) -> None:
+        if record.status != "confirmed":
+            return
+        evidence_ids = json.loads(record.evidence_ids_json or "[]")
+        hypotheses = {h.id for h in self.list_hypotheses()}
+        if record.hypothesis_id not in hypotheses or not evidence_ids:
+            raise ValueError("confirmed finding requires a hypothesis and evidence")
+        if not all(self.get_evidence(eid) is not None for eid in evidence_ids):
+            raise ValueError("confirmed finding has missing evidence")
+        validations = self.list_validation_actions(record.hypothesis_id)
+        if not any(v.scope_allowed and v.outcome == "supports"
+                   and set(json.loads(v.evidence_ids_json)) & set(evidence_ids) for v in validations):
+            raise ValueError("confirmed finding requires scope-authorized supporting validation")
+        if record.critic_review_id:
+            review = self.get_critic_review(record.critic_review_id)
+            if review is None or review.hypothesis_id != record.hypothesis_id or review.decision != "accept":
+                raise ValueError("confirmed finding requires an accepted linked critic review")
+
     def create_finding(self, **fields) -> str:
         finding_id = new_id("find")
         with self._session_factory() as session:
             record = FindingRecord(id=finding_id, assessment_id=self.assessment_id, **fields)
+            self._check_confirmed_record(record)
             session.add(record)
             session.commit()
         return finding_id
@@ -518,6 +545,7 @@ class Workspace:
                 raise ValueError(f"no finding '{finding_id}'")
             for key, value in fields.items():
                 setattr(record, key, value)
+            self._check_confirmed_record(record)
             session.commit()
 
     # -- evidence (Phase 4) -----------------------------------------------------

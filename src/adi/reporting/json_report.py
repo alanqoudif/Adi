@@ -6,10 +6,11 @@ from pathlib import Path
 
 from adi.reporting.markdown import render_markdown
 from adi.reporting.models import Report
+from adi.reporting.redaction import known_secrets, redact_structure, redact_text
 
 
 def render_json(report: Report) -> str:
-    return report.model_dump_json(indent=2)
+    return Report.model_validate(redact_structure(report.model_dump(), known_secrets())).model_dump_json(indent=2)
 
 
 def write_reports(report: Report, output_dir: Path, formats: tuple[str, ...] = ("markdown", "json")
@@ -18,7 +19,7 @@ def write_reports(report: Report, output_dir: Path, formats: tuple[str, ...] = (
     written: dict[str, Path] = {}
     if "markdown" in formats:
         path = output_dir / "report.md"
-        path.write_text(render_markdown(report))
+        path.write_text(redact_text(render_markdown(report), known_secrets()))
         written["markdown"] = path
     if "json" in formats:
         path = output_dir / "report.json"

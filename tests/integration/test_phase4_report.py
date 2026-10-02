@@ -111,6 +111,8 @@ async def test_mandatory_report_reflects_confirmed_rejected_and_positive_control
     assert f.severity == "high"
     assert f.remediation
     assert f.evidence_ids
+    assert set(f.evidence_ids) <= {e.display_id for e in report.evidence_index}
+    assert f.validation_ids
     assert "accept" in f.critic_summary.lower()
     assert f.display_id in md
     assert "Broken object authorization" not in [h.title for h in report.rejected_hypotheses]  # sanity

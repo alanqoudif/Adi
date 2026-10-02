@@ -179,6 +179,7 @@ class ValidationEngine:
         category, title = entry
         self.ctx.workspace.record_positive_observation(
             category=category, title=title, summary=result.detail, endpoint=endpoint,
+            asset=urlsplit(endpoint).hostname or "",
             session=str(p.get("other_session") or p.get("session_id") or p.get("normal_session") or ""),
             evidence_ids_json=json.dumps(result.evidence_ids),
         )

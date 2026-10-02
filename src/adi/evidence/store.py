@@ -37,6 +37,12 @@ class EvidenceStore:
         sanitized = sanitize_for_evidence(raw_text, content_type=content_type) if raw_text else ""
         evidence_hash = hash_text(raw_text) if raw_text else ""
 
+        from adi.reporting.redaction import known_secrets, redact_structure, redact_text
+        secrets = known_secrets(self.workspace.load_scope())
+        summary, subject = redact_text(summary, secrets), redact_text(subject, secrets)
+        sanitized = redact_text(sanitized, secrets)
+        metadata = redact_structure(metadata or {}, secrets)
+        raw_reference = redact_text(raw_reference, secrets) if raw_reference else None
         evidence_id = self.workspace.record_evidence(
             type=type.value,
             source=source,

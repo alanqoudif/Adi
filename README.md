@@ -20,9 +20,9 @@ not as a finding.
 - Not for testing systems you do not own or are not authorized to test.
   See [docs/safety-model.md](docs/safety-model.md).
 
-## Status: Phase 3 of 6
+## Status: Phase 4 of 6
 
-This repository implements **Phases 1–3**: assessment persistence, scope
+This repository implements **Phases 1–4**: assessment persistence, scope
 enforcement, isolated tool execution, an LLM-driven agent loop, and now a
 full HTTP/web-discovery subsystem — Adi can start from just a root URL and
 autonomously discover links, forms, parameters, technologies, and API
@@ -38,7 +38,7 @@ current limitations.
 | 1 | Core runtime: CLI, scope, Docker/Local/Mock runtimes, tool registry, nmap skill, assessment persistence | ✅ done |
 | 2 | Agent loop: LLM abstraction, planner, typed actions, context builder, hypothesis engine, loop prevention | ✅ done |
 | 3 | Web capabilities: HTTP workspace, HTML/JS discovery, whatweb/ffuf/feroxbuster/nuclei, Playwright, rate limiting | ✅ done |
-| 4 | Validation engine: evidence store, finding verifier, critic, reporting | not started |
+| 4 | Validation engine: evidence store, finding verifier, critic, positive controls, CLI inspection, persistent reports and teach mode | ✅ done |
 | 5 | Source intelligence: repo indexing, Semgrep/Gitleaks/Trivy, source↔runtime correlation | not started |
 | 6 | Tool expansion: Hydra, SMB/LDAP, packet/TLS tools | not started |
 
@@ -85,6 +85,49 @@ adi lab 127.0.0.1 --autonomous --goal "Enumerate services and report findings."
 Without a configured provider, `--autonomous` fails with a clear message
 rather than faking a plan — see [docs/agent-loop.md](docs/agent-loop.md).
 
+## Phase 4: controlled validation and reports
+
+The validation/evidence/finding pipeline separates confirmed issues from rejected
+false indications and stores positive security controls independently. Reports and
+teach mode reconstruct facts from SQLite after restart. See [validation](docs/validation.md),
+[evidence](docs/evidence.md), [findings](docs/findings.md), and [reporting](docs/reporting.md).
+
+Safe local acceptance example (localhost only, deterministic planner fixture;
+real CLI/Orchestrator/HTTP/validation/critic/reporting code):
+
+```bash
+source .venv/bin/activate
+python examples/phase4_lab.py --output .adi/phase4-demo
+# The script prints the stored assessment ID and exact report paths.
+cd .adi/phase4-demo
+adi resume <assessment-id>
+adi hypotheses <assessment-id>
+adi findings <assessment-id>
+adi evidence <assessment-id> EV-001
+adi teach <assessment-id> ADI-H-002
+adi report <assessment-id>
+```
+
+The local demonstration confirms controlled cross-user order access (High, 0.95),
+rejects the correctly protected route (403), records critic ACCEPT and the positive
+control, and regenerates reports in a new process. No finding is inserted manually.
+Real-model readiness is checked separately with `python examples/phase4_smoke.py`;
+without provider credentials it explicitly reports a skip.
+
+Phase 4 completion gates preserve the original 178 passing tests and cover redaction,
+severity, false positives, critic, evidence trace, deduplication, persisted budgets,
+resume, report regeneration and the autonomous local lab. Playwright's package was
+installed, but Chromium's CDN download timed out repeatedly; the existing browser test
+remains skipped. Docker image/daemon availability and configured real-model access
+are environment-dependent. Phase 5 has not begun.
+
+Implemented validators: object/function authorization, anonymous authentication,
+cookie Secure/HttpOnly, logout behavior, security headers, CORS reflection and verbose
+error disclosure. Reserved validation action types (including rate-limit probing)
+remain explicitly unsupported. Severity uses conservative category impact defaults,
+not full CVSS or inferred business impact. Pending authenticated work needs fresh
+login after restart; cookie credentials are not persisted in reports or SQLite.
+
 ## Adding a new tool
 
 Create `skills/<name>/` with `tool.yaml` (capabilities, risk level, target
@@ -98,12 +141,10 @@ implementation and [docs/architecture.md](docs/architecture.md).
 
 ```bash
 pytest -q
-ruff check src tests
+ruff check .
 ```
 
 ## Roadmap
 
-See the phase table above and `docs/architecture.md`. Phase 2 adds the
-provider-neutral LLM abstraction and the planner that turns target state
-into typed `PlannedAction`s, authorized by the same `ScopeEngine` already in
-place.
+See the phase table above and `docs/architecture.md`. Phases 1–4 are implemented.
+Source intelligence (Phase 5) and tool expansion (Phase 6) remain unstarted.

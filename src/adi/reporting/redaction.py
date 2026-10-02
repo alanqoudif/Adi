@@ -8,9 +8,9 @@ from adi.evidence.redaction import redact_secrets
 
 _SENSITIVE_KEY = re.compile(
     r"authorization|cookie|set-cookie|proxy-authorization|password|passwd|"
-    r"secret|token|api[_-]?key", re.IGNORECASE)
+    r"(?:client_)?secret|(?:access_|refresh_|id_)?token|(?:x[-_])?api[_-]?key", re.IGNORECASE)
 _HEADER = re.compile(
-    r"(?i)((?:authorization|cookie|set-cookie|proxy-authorization|x-api-key)"
+    r"(?i)(\b(?:authorization|cookie|set-cookie|proxy-authorization|x-api-key)"
     r"[\"']?\s*[:=]\s*)([^\r\n]+)")
 _ASSIGNMENT = re.compile(
     r"(?i)((?:password|passwd|secret|token|api[_-]?key)[\"']?\s*[:=]\s*"

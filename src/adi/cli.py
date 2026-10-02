@@ -486,7 +486,7 @@ def hypothesis_cmd(assessment_id: str = typer.Argument(...), hypothesis_id: str 
 
     validations = ws.list_validation_actions(hypothesis_id=record.id)
     console.print(f"\nValidation actions used: {len(validations)}")
-    limit = ws.validation_limit(record.id)
+    limit = ws.validation_limit(record.id, persist=False)
     console.print(f"Remaining validation budget: {max(0, limit - len(validations))} / {limit}")
     for v in validations:
         console.print(f"  - {v.id} {v.action_type}: {v.outcome} — {v.detail}\n    Reason: {v.reason_summary or 'not recorded'}")
@@ -546,8 +546,16 @@ def finding_cmd(assessment_id: str = typer.Argument(...), finding_id: str = type
         review = ws.get_critic_review(record.critic_review_id)
         if review:
             console.print(f"\nCritic review: {review.decision} — concerns: {'; '.join(_json(review.concerns_json)) or 'none'}")
+    if not record.critic_review_id:
+        console.print("Critic review: not recorded (deterministic path)")
     console.print(f"\nRemediation: {record.remediation or '(none)'}")
-    console.print("References: " + (", ".join(_json(record.references_json)) or "none"))
+    references = _json(record.references_json)
+    if not references:
+        from adi.reporting.builder import ReportBuilder
+        report = ReportBuilder(ws).build()
+        detail = next((f for f in report.findings + report.supported_items if f.id == record.id), None)
+        references = detail.references if detail else []
+    console.print("References: " + (", ".join(references) or "none"))
 
 
 def _json(value: str):

@@ -103,6 +103,18 @@ class FindingPipeline:
             raise ValueError(f"no hypothesis '{hypothesis_id}'")
 
         evidence = self.evidence_store.for_hypothesis(hypothesis_id)
+        if hypothesis.status == HypothesisStatus.CONFIRMED:
+            existing = next((f for f in self.workspace.list_findings() if f.hypothesis_id == hypothesis_id), None)
+            if existing is None:
+                raise ConfirmationInvariantError("confirmed hypothesis has no persisted finding")
+            review = self.workspace.get_critic_review(existing.critic_review_id) if existing.critic_review_id else None
+            return FindingPipelineResult(
+                HypothesisStatus.CONFIRMED, existing.id,
+                VerificationDecision(VerificationStatus.CONFIRMED, [existing.validation_summary]),
+                CriticDecision(review.decision) if review else None, existing.critic_review_id)
+        if hypothesis.status == HypothesisStatus.REJECTED:
+            return FindingPipelineResult(HypothesisStatus.REJECTED, None,
+                                         self.verifier.evaluate(hypothesis, evidence))
         decision = self.verifier.evaluate(hypothesis, evidence)
         category = category or hypothesis.category or "uncategorized"
         endpoints = affected_endpoints or []
@@ -162,7 +174,9 @@ class FindingPipeline:
         validations = self.workspace.list_validation_actions(hypothesis_id=hypothesis_id)
         if not validations:
             problems.append("no validation action record")
-        if not any(v.scope_allowed and v.outcome == "supports" for v in validations):
+        if not any(v.scope_allowed and v.outcome == "supports"
+                   and set(json.loads(v.evidence_ids_json)) & {e.id for e in evidence}
+                   for v in validations):
             problems.append("no scope-authorized supporting validation")
         if any(self.evidence_store.get(e.id) is None for e in evidence):
             problems.append("unpersisted evidence")
@@ -198,7 +212,8 @@ class FindingPipeline:
             self.dedup.merge_evidence(existing.id, evidence_ids)
             if status == "confirmed" and existing.status != "confirmed":
                 self.workspace.update_finding(existing.id, status="confirmed", hypothesis_id=hypothesis.id,
-                                              critic_review_id=critic_review_id)
+                                              critic_review_id=critic_review_id, confidence=hypothesis.confidence,
+                                              validation_summary="; ".join(decision.reasons))
             return existing.id
 
         impact, remediation = _CATEGORY_GUIDANCE.get(
