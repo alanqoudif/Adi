@@ -71,16 +71,43 @@ def add(
         manager.add_profile(profile, secret=secret)
         manager.set_active(name)
         output(f'Provider saved. Active provider: {name} | Model: {model}')
-    except (LLMError, ValueError):
-        output('Invalid provider configuration. Check name, kind, endpoint, model and API key requirements.')
+    except (LLMError, ValueError) as exc:
+        output(str(exc) if isinstance(exc, LLMError) else 'Invalid provider configuration. Check name, kind, endpoint, model and API key requirements.')
         raise typer.Exit(1) from None
 
 
 @provider_app.command('edit')
-def edit(name: str):
+def edit(
+    name: str,
+    model: str | None = typer.Option(None, '--model'),
+    base_url: str | None = typer.Option(None, '--base-url'),
+    key_env: str | None = typer.Option(None, '--key-env'),
+    test: bool = typer.Option(True, '--test/--no-test'),
+):
     try:
-        shell = PlainShell(load_config())
-        asyncio.run(setup_provider(shell.controller.models, shell.prompt, output, edit=name))
+        manager = ModelManager()
+        if model is None and base_url is None and key_env is None:
+            shell = PlainShell(load_config())
+            asyncio.run(setup_provider(manager, shell.prompt, output, edit=name))
+            return
+        profile = manager.require_profile(name).model_copy()
+        if model is not None:
+            profile.model = model
+        if base_url is not None:
+            profile.base_url = base_url
+        validate_profile(profile)
+        secret = os.environ.get(key_env) if key_env else None
+        if key_env and not secret:
+            raise LLMError('The credential environment variable is empty.')
+        if test:
+            result = asyncio.run(manager.test_connection(profile, secret=secret))
+            output(test_message(result))
+            if not result.ok:
+                raise typer.Exit(1)
+        else:
+            output('Connection unverified (test skipped).')
+        manager.add_profile(profile, secret=secret)
+        output(f'Provider saved: {name} | Model: {profile.model}')
     except (LLMError, ValueError) as exc:
         output(str(exc))
         raise typer.Exit(1) from None

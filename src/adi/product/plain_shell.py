@@ -14,6 +14,7 @@ from pathlib import Path
 from rich.console import Console
 
 from adi.config.models import AdiConfig
+from adi.llm.base import LLMError
 from adi.product.console import ExpertConsole
 from adi.product.controller import ControllerState, ProductController
 from adi.product.events import Event, EventType
@@ -154,6 +155,8 @@ class PlainShell:
             await setup_provider(self.controller.models, self.prompt, self._print)
         except (EOFError, KeyboardInterrupt):
             self._print("Setup skipped. Run /provider add to connect AI.")
+        except (LLMError, ValueError) as exc:
+            self._print(f"Setup incomplete: {exc}. Run /provider add to retry.")
 
     async def _provider_command(self, rest: str) -> None:
         manager = self.controller.models

@@ -12,6 +12,7 @@ from functools import partial
 from pathlib import Path
 from typing import ClassVar
 
+from rich.markup import escape
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -130,6 +131,7 @@ class AdiApp(App):
         Binding("ctrl+s", "show_scope", "Scope"),
         Binding("question_mark", "show_help", "Help"),
         Binding("ctrl+p", "command_palette", "Commands"),
+        Binding("ctrl+q", "quit", "Quit", priority=True),
     ]
 
     COMMANDS: ClassVar[set] = App.COMMANDS | {AdiCommands}
@@ -155,7 +157,7 @@ class AdiApp(App):
         self._log = self.query_one("#chat", RichLog)
         self._side = self.query_one("#side", ScopePanel)
         self.title = "ADI"
-        self._write_line("[bold]Adi[/bold] — Ctrl+P for commands, ? for help, Ctrl+C to quit.")
+        self._write_line("[bold]Adi[/bold] — Ctrl+P for commands, ? for help, Ctrl+Q to quit.")
         candidate = self.shell.controller.auto_resume_candidate()
         if candidate is not None:
             self._write_line(
@@ -170,7 +172,7 @@ class AdiApp(App):
 
     async def _prompt(self, label: str, secret: bool = False) -> str:
         widget = self.query_one("#input", Input)
-        self._write_line(label)
+        self._write_line(escape(label))
         widget.password = secret
         widget.placeholder = label + " (/cancel to stop)"
         widget.focus()

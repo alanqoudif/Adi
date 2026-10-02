@@ -50,8 +50,8 @@ Legend: NOT STARTED / IN PROGRESS / IMPLEMENTED / TESTED / ENV BLOCKED
   scope panel); findings/evidence/hypotheses/attack-surface/source still
   render as text in the chat log via slash commands rather than as
   dedicated scrollable widgets/panes — see "remaining TUI depth" below.
-  Manual real-terminal verification NOT performed in this sandbox (no TTY
-  available to the agent) — see Environmental limitations.
+  Real PTY terminal provider onboarding and localhost assessment verified
+  on 2026-10-03 — see the acceptance checkpoint below.
 - Expert command console (`adi.product.console.ExpertConsole`) + sanitized
   command preview + approval integration — TESTED. `/run`/`/tool-run` go
   through the exact same `ScopeEngine`/`ToolExecutor` path as autonomous
@@ -79,7 +79,8 @@ Legend: NOT STARTED / IN PROGRESS / IMPLEMENTED / TESTED / ENV BLOCKED
   LLM call, per spec ("do not invent hidden chain-of-thought").
 - First-run setup wizard — TESTED (`tests/unit/test_plain_shell.py::
   test_first_run_wizard_adds_provider_profile`), triggered automatically
-  by `adi shell --plain` when no profile is configured.
+  by `adi shell --plain` when no profile is configured. TUI first-run
+  offers Connect AI and routes `/provider add` / Ctrl+P to the same wizard.
 - Doctor expansion (Product Shell section: keyring backend, configured
   profiles, session count) — TESTED.
 - Crash/interruption recovery — TESTED (`Workspace.
@@ -109,17 +110,6 @@ Legend: NOT STARTED / IN PROGRESS / IMPLEMENTED / TESTED / ENV BLOCKED
   `docs/interactive-security.md`, `docs/expert-mode.md`,
   `docs/configuration.md` — DONE. README now leads with the product
   workflow — DONE.
-- Command console (`/run`, `/tool-run`) reusing Scope/Risk/Resolver — NOT STARTED
-- Findings/hypotheses/evidence/attack-surface/source browsers (TUI) — NOT STARTED
-- Approvals UI — NOT STARTED
-- Teach mode / expert mode — NOT STARTED
-- Pause/continue/stop, crash recovery — NOT STARTED
-- First-run setup wizard — NOT STARTED
-- Doctor expansion (providers, local model servers) — NOT STARTED
-- Docs (tui.md, providers.md, privacy-routing.md, sessions.md,
-  interactive-security.md, configuration.md, expert-mode.md) — NOT STARTED
-- Full local acceptance test (fake provider, fixture target) — NOT STARTED
-- Security regression proof (no raw shell, no self-approval, etc.) — NOT STARTED
 
 ## Dependency order chosen
 1. Events + ModelManager/config/credentials (this commit)
@@ -160,9 +150,8 @@ Remaining, in priority order:
    environment / default). Origin is inferred from which layer's file
    exists, not tracked per-field inside `AdiConfig` itself — documented
    as best-effort in the command's own docstring.
-4. Manual real-terminal verification of the TUI (this sandbox has no
-   TTY attached to the agent) — ask the user to run `adi shell` and
-   report back, or verify in an environment with one.
+4. Provider onboarding real-terminal verification — DONE on 2026-10-03.
+   Wider terminal/resizing coverage remains a separate UI task.
 
 `ruff check .` passes clean repo-wide (re-verified after every subsequent
 checkpoint below). Full suite re-run after every checkpoint; see the
@@ -180,10 +169,50 @@ expert-mode,configuration}.md`, `README.md`. Tests: `test_expert_console.py`,
 ## Environmental limitations encountered
 - OS keyring backend not exercised live in this sandboxed dev environment
   (no Secret Service/macOS Keychain session available to pytest); the
-  fallback encrypted-permission file store is real and tested, and
+  fallback permission-restricted file store is real and tested, and
   `keyring_available()` lets `doctor` report which path is active.
 - No live remote LLM credential available in this session; provider
   connection logic is implemented and unit-tested against the `mock` kind
   and the OpenAI-compatible HTTP path is exercised by existing Core tests
   (`PlannerFixture`) but not against a real OpenRouter/Ollama endpoint —
   will be reported as NOT AVAILABLE unless the user supplies one later.
+
+
+## Provider onboarding acceptance — 2026-10-03
+
+- First-run offer in bare `adi` and `adi shell`: all seven providers plus
+  Continue without AI. `/provider add` and Ctrl+P open interactive setup.
+- Shared TUI/plain wizard: masked credential entry, endpoint defaults,
+  dynamic discovery, manual model IDs, real minimal completion test,
+  transactional edit (failed tests leave profile/key unchanged), skip/cancel.
+- Provider lifecycle and live model switching: `/providers`, `/provider`,
+  add/edit/remove/test/switch, `/models`, `/model [id]`; matching CLI groups
+  and scriptable add/edit options. Provider actions are discoverable in Ctrl+P.
+- Status panel: provider + profile + model before/after assessment creation,
+  immediate management refresh; actionable no-AI guidance.
+- Credential abstraction preserved. Atomic mode-0600 fallback, credential
+  deletion and role cleanup, sanitized provider errors, reflected key
+  redaction before structured planning. No credential-bearing response
+  bodies in error messages, events or assessment persistence.
+- Automated tests: `tests/unit/test_provider_onboarding.py` and
+  `tests/integration/test_tui_provider_acceptance.py`. All provider kinds,
+  fresh/skip/setup/edit/delete/switch, discovery and pagination, model
+  switching, failed auth/unreachable server/timeout/malformed response,
+  TUI password entry/cancellation/palette/status, CLI management, and
+  assessment-directory/report/event canary checks use mock/local HTTP.
+- Headless full-path acceptance PASS: TUI setup → ModelManager HTTP provider
+  → structured planner → real Orchestrator → registry CapabilityResolver
+  → ScopeEngine → MockRuntime whatweb execution, plus real localhost HTTP
+  assessment → persistent evidence → one confirmed finding, one rejected
+  hypothesis → reports → TUI completion events. No rows inserted manually.
+- Real terminal PASS: from `/Users/faisal/dev/Adi`, activated `.venv` and ran
+  `adi shell` in a PTY. Verified `/provider` none; `/provider add` custom
+  local HTTP fixture; successful connection test; active provider
+  `manual-fixture`; `/models`; `/model fixture-alternate`; visible MODEL
+  panel update; `/new http://127.0.0.1:3000`; ordinary assessment instruction.
+  Real Core completed `assess-6fb3f9fbfc33`, with 4 endpoints, 2 hypotheses,
+  one high finding and persisted evidence/reports. This proves product
+  routing using a deterministic HTTP protocol fixture, not model reasoning
+  quality or a paid remote-provider account.
+- Local socket binding required sandbox escalation; loopback acceptance
+  succeeded with that access. No real provider API keys were required.

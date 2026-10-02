@@ -249,7 +249,16 @@ class ModelManager:
         except Exception as exc:  # noqa: BLE001 - connection probe must never raise
             from adi.llm.errors import provider_error
 
-            safe = str(exc) if isinstance(exc, LLMError) else provider_error(exc)
+            allowed = {
+                "Authentication rejected", "Model not found or invalid endpoint",
+                "Connection refused or server unreachable", "Timeout", "Invalid endpoint",
+                "Provider returned malformed response", "Provider rate limit or quota exceeded",
+                "API key is required for Anthropic",
+            }
+            message = str(exc)
+            safe = message if isinstance(exc, LLMError) and (
+                message in allowed or message.startswith("Provider rejected request (HTTP ")
+            ) else provider_error(exc)
             return ConnectionTestResult(ok=False, error=safe)
 
     async def list_models(self, profile: ProviderProfile, secret: str | None = None) -> list[str]:

@@ -23,6 +23,8 @@ import os
 import stat
 from pathlib import Path
 
+from adi.llm.base import LLMError
+
 _SERVICE_NAME = "adi-security-workbench"
 
 try:
@@ -45,7 +47,6 @@ def keyring_available() -> bool:
 
 def _fallback_store_path() -> Path:
     base = Path(os.environ.get("ADI_CONFIG_HOME", Path.home() / ".config" / "adi"))
-    base.mkdir(parents=True, exist_ok=True)
     return base / "credential_store.json"
 
 
@@ -61,6 +62,7 @@ def _fallback_read() -> dict[str, str]:
 
 def _fallback_write(data: dict[str, str]) -> None:
     path = _fallback_store_path()
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     import tempfile
 
     fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=".credentials-")
@@ -77,13 +79,16 @@ def _fallback_write(data: dict[str, str]) -> None:
 def set_secret(profile_name: str, secret: str) -> str:
     """Store `secret` for `profile_name`. Returns the credential_ref to
     persist in the profile (never the secret itself)."""
-    if keyring_available():
-        _keyring.set_password(_SERVICE_NAME, profile_name, secret)
+    try:
+        if keyring_available():
+            _keyring.set_password(_SERVICE_NAME, profile_name, secret)
+            return "keyring"
+        data = _fallback_read()
+        data[profile_name] = secret
+        _fallback_write(data)
         return "keyring"
-    data = _fallback_read()
-    data[profile_name] = secret
-    _fallback_write(data)
-    return "keyring"
+    except Exception:  # noqa: BLE001 - secret-bearing backend errors never escape
+        raise LLMError("Credential storage unavailable. Unlock the OS keyring or use a keyless local provider.") from None
 
 
 def get_secret(profile_name: str, credential_ref: str | None) -> str | None:
@@ -110,4 +115,7 @@ def delete_secret(profile_name: str) -> None:
     data = _fallback_read()
     if profile_name in data:
         del data[profile_name]
-        _fallback_write(data)
+        try:
+            _fallback_write(data)
+        except OSError:
+            raise LLMError("Credential store cannot be updated. Check its permissions and retry removal.") from None

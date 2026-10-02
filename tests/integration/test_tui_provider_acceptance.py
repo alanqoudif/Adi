@@ -11,6 +11,7 @@ from adi.product.controller import ControllerState
 from adi.product.events import EventType
 from adi.product.tui.app import AdiApp
 
+
 def _load_demo_module():
     path = Path(__file__).parents[2] / 'examples' / 'phase4_lab.py'
     spec = importlib.util.spec_from_file_location('tui_provider_demo', path)

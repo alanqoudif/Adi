@@ -217,3 +217,105 @@ async def test_provider_reflected_key_is_redacted_before_planning(tmp_path, monk
     p = ProviderProfile(name='router', kind='openrouter', model='m')
     text = await build_llm_provider(p, secret=SECRET).complete([LLMMessage(role='user', content='hi')])
     assert SECRET not in text and '<redacted>' in text
+
+
+@pytest.mark.asyncio
+async def test_failed_edit_preserves_profile_and_secret(tmp_path, provider_http):
+    m = ModelManager(tmp_path)
+    m.add_profile(ProviderProfile(name='x', kind='openrouter', model='old'), secret=SECRET)
+    provider_http[1][0] = 401
+    assert not await setup_provider(m, prompt_answers(['replacement', 'new', 'y']), lambda _: None, edit='x')
+    assert m.active_profile().model == 'old'
+    assert credentials.get_secret('x', 'keyring') == SECRET
+
+
+@pytest.mark.asyncio
+async def test_default_ollama_endpoint_discovery(tmp_path, provider_http):
+    m = ModelManager(tmp_path)
+    assert await setup_provider(m, prompt_answers(['4', '', '', '1', 'y']), lambda _: None)
+    assert str(provider_http[0][0].url) == 'http://localhost:11434/v1/models'
+    assert m.active_profile().model == 'fixture-a'
+
+
+@pytest.mark.asyncio
+async def test_anthropic_model_pagination(tmp_path, monkeypatch):
+    calls = []
+    def handle(request):
+        calls.append(request)
+        after = request.url.params.get('after_id')
+        return httpx.Response(200, json={'data': [{'id': 'b' if after else 'a'}],
+                                        'has_more': not after, 'last_id': 'a' if not after else 'b'})
+    original = httpx.AsyncClient
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kw: original(**kw, transport=httpx.MockTransport(handle)))
+    models = await ModelManager(tmp_path).list_models(ProviderProfile(name='x', kind='anthropic'), secret=SECRET)
+    assert models == ['a', 'b']
+    assert calls[0].headers['x-api-key'] == SECRET
+    assert calls[1].url.params['after_id'] == 'a'
+
+
+def test_cli_scriptable_edit(tmp_path, monkeypatch, provider_http):
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    assert runner.invoke(app, ['provider', 'add', 'local', '--kind', 'ollama', '--model', 'fixture-a']).exit_code == 0
+    result = runner.invoke(app, ['provider', 'edit', 'local', '--model', 'fixture-b'])
+    assert result.exit_code == 0, result.output
+    assert ModelManager().active_profile().model == 'fixture-b'
+    provider_http[1][0] = 401
+    result = runner.invoke(app, ['provider', 'edit', 'local', '--model', 'bad'])
+    assert result.exit_code == 1
+    assert ModelManager().active_profile().model == 'fixture-b'
+
+
+@pytest.mark.asyncio
+async def test_tui_cancel_resets_password_and_keeps_shell_usable(tmp_path, provider_http):
+    app = AdiApp(AdiConfig(runtime=RuntimeConfig(type='mock')), tmp_path)
+    async with app.run_test() as pilot:
+        widget = app.query_one('#input')
+        for value in ['/provider add', 'openai', 'p']:
+            widget.value = value
+            await pilot.press('enter')
+            await pilot.pause()
+        assert widget.password
+        widget.value = '/cancel'
+        await pilot.press('enter')
+        await pilot.pause()
+        assert not widget.password
+        assert not app.shell.controller.models.list_profiles()
+        assert not app._busy
+
+
+@pytest.mark.asyncio
+async def test_invalid_first_run_choice_is_actionable_not_traceback(tmp_path):
+    output = []
+    shell = PlainShell(AdiConfig(runtime=RuntimeConfig(type='mock')), tmp_path, output.append)
+    shell.prompt = prompt_answers(['invalid choice'])
+    await shell._first_run_wizard()
+    assert '/provider add to retry' in '\n'.join(output)
+    assert not shell.controller.models.list_profiles()
+
+
+def test_keyless_profile_delete_does_not_create_credential_directory(tmp_path, monkeypatch):
+    directory = tmp_path / 'never-created'
+    monkeypatch.setenv('ADI_CONFIG_HOME', str(directory))
+    credentials.delete_secret('keyless')
+    assert not directory.exists()
+
+
+def test_credential_failure_cannot_expose_secret(tmp_path, monkeypatch):
+    from adi.llm.base import LLMError
+    def fail(data):
+        raise OSError('private backend error: ' + SECRET)
+    monkeypatch.setattr(credentials, '_fallback_write', fail)
+    with pytest.raises(LLMError) as error:
+        credentials.set_secret('remote', SECRET)
+    assert SECRET not in str(error.value)
+    assert 'Credential storage unavailable' in str(error.value)
+
+
+def test_fallback_store_is_atomic_permission_restricted(tmp_path):
+    import stat
+    credentials.set_secret('x', SECRET)
+    store = credentials._fallback_store_path()
+    assert stat.S_IMODE(store.stat().st_mode) == 0o600
+    assert not list(store.parent.glob('.credentials-*'))
+    assert credentials.get_secret('x', 'keyring') == SECRET

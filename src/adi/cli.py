@@ -22,7 +22,7 @@ from adi.runtime.docker_runtime import DockerKaliRuntime
 from adi.scope.models import AssessmentMode, Scope
 from adi.tools.registry import ToolRegistry
 
-app = typer.Typer(add_completion=False, help="Adi — autonomous security assessment workspace.")
+app = typer.Typer(pretty_exceptions_show_locals=False, add_completion=False, help="Adi — autonomous security assessment workspace.")
 class RedactingConsole(Console):
     """Redact at the rendering boundary, including untrusted table cells."""
     secrets: tuple[str, ...] = ()

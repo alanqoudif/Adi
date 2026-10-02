@@ -16,13 +16,22 @@ not as a finding.
 
 ```bash
 cd your-project
-adi shell            # Textual TUI — or: adi shell --plain / adi --plain
+adi                  # Textual TUI — also: adi shell
+# Plain mode: adi shell --plain / adi --plain
 ```
 
-First run walks you through picking an AI provider (Anthropic, OpenAI,
+First run offers **Connect AI**. Run `/provider add` or press Ctrl+P →
+**Add AI Provider** to configure a provider entirely inside Adi (Anthropic, OpenAI,
 OpenRouter, Ollama, vLLM, LM Studio, or any OpenAI-compatible endpoint —
 local models are first-class, no vendor lock-in) and confirms the
-connection. Then you just talk to it:
+connection with a real minimal request before saving by default. You can
+continue without AI and connect later. No manual config or .env editing is needed.
+
+Use `/providers`, `/provider edit <name>`, `/provider test <name>`,
+`/provider remove <name>`, `/provider <name>`, `/models`, and `/model <id>`
+for live management. Scriptable equivalents live under `adi provider`
+and `adi model`; see [provider setup](docs/providers.md).
+Then create an assessment with `/new <target>` and talk to it:
 
 ```
 > Assess this application and focus on authorization.

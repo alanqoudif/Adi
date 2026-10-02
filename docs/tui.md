@@ -1,7 +1,6 @@
 # The Product Shell (TUI & plain mode)
 
-`adi shell` (or bare `adi`, once wired — see
-[product-implementation-status.md](product-implementation-status.md))
+`adi shell` (or bare `adi`)
 opens the interactive Product Shell: a chat-first security workbench over
 the real Core (scope, orchestrator, tools, evidence, findings, source
 intelligence). It has two front ends sharing one command interpreter:
@@ -48,7 +47,41 @@ copy.
 | Ctrl+E | `/evidence` |
 | Ctrl+S | `/scope` |
 | ? | `/help` |
-| Ctrl+C | quit |
+| Ctrl+Q | quit |
+
+## Connect AI
+
+On an empty project the welcome log offers OpenAI, Anthropic, OpenRouter,
+Ollama, LM Studio, vLLM, Custom OpenAI-compatible, and Continue without AI.
+Use `/provider add` or Ctrl+P → **Add AI Provider** to open setup. Answer
+prompts in the input field; API key entry is masked and never copied to
+the chat log. `/cancel` cancels setup without saving. The input regains
+normal behavior after setup or cancellation.
+
+Setup discovers model IDs and accepts either a model number or manual ID.
+A minimal completion tests reachability, authentication, the selected
+model and response shape before saving by default. Failed tests do not
+save credentials or replace an existing profile. Explicitly skipping the
+test labels the connection unverified.
+
+| Command | Action |
+|---|---|
+| `/providers` | List saved profiles |
+| `/provider` | Show active provider and model |
+| `/provider add` | Interactive connection setup |
+| `/provider edit <name>` | Edit endpoint, key or model |
+| `/provider remove <name>` | Remove profile, credential and role pins |
+| `/provider test <name>` | Test a profile; no name tests the active profile |
+| `/provider <name>` | Switch active provider |
+| `/models` | Discover models for the active provider |
+| `/model` | Show active model |
+| `/model <id>` | Switch model, including a manually entered ID |
+
+Ctrl+P also offers **Switch AI Provider**, **Test Active Provider**,
+**Choose Model**, and **Provider Settings**. The status panel shows provider,
+profile and model even before an assessment exists, and refreshes after
+management commands. With no AI it shows the Add AI Provider shortcut.
+An AI instruction without a configured provider returns setup instructions.
 
 ## Slash commands
 
