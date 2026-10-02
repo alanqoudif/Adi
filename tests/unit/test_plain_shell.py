@@ -71,7 +71,7 @@ async def test_first_run_wizard_adds_provider_profile(tmp_path, monkeypatch):
     shell = PlainShell(config, project_root=tmp_path)
     assert shell.controller.models.active_profile() is None
 
-    answers = iter(["ollama", "", ""])  # provider, model, (no secret prompt for ollama)
+    answers = iter(["ollama", "", "", "local-model", "n"])  # skip network verification explicitly
     import builtins
 
     monkeypatch.setattr(builtins, "input", lambda prompt="": next(answers))

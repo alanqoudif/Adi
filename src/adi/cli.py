@@ -64,7 +64,9 @@ def main(
         run_plain_shell(load_config())
         raise typer.Exit()
     if ctx.invoked_subcommand is None:
-        console.print(ctx.get_help())
+        from adi.product.tui.app import run_tui
+
+        run_tui(load_config())
 
 
 @app.command()
@@ -836,6 +838,14 @@ def shell(
     from adi.product.tui.app import run_tui
 
     run_tui(load_config())
+
+
+from adi.product.provider_cli import model_app, models, provider_app, providers
+
+app.add_typer(provider_app, name="provider")
+app.add_typer(model_app, name="model")
+app.command("providers")(providers)
+app.command("models")(models)
 
 
 if __name__ == "__main__":

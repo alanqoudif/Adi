@@ -61,11 +61,17 @@ def _fallback_read() -> dict[str, str]:
 
 def _fallback_write(data: dict[str, str]) -> None:
     path = _fallback_store_path()
-    path.write_text(json.dumps(data))
+    import tempfile
+
+    fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=".credentials-")
     try:
-        path.chmod(stat.S_IRUSR | stat.S_IWUSR)
-    except OSError:
-        pass
+        with os.fdopen(fd, "w") as stream:
+            stream.write(json.dumps(data))
+        os.chmod(temporary, stat.S_IRUSR | stat.S_IWUSR)
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 def set_secret(profile_name: str, secret: str) -> str:

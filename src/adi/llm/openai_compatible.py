@@ -10,6 +10,8 @@ from __future__ import annotations
 import httpx
 
 from adi.llm.base import LLMError, LLMMessage, LLMProvider
+from adi.llm.errors import provider_error
+from adi.reporting.redaction import redact_text
 
 
 class OpenAICompatibleProvider(LLMProvider):
@@ -39,9 +41,12 @@ class OpenAICompatibleProvider(LLMProvider):
                 response = await client.post(self._endpoint(), json=payload, headers=headers)
                 response.raise_for_status()
                 body = response.json()
-        except httpx.HTTPError as exc:
-            raise LLMError(f"OpenAI-compatible API call failed: {exc}") from exc
+        except (httpx.HTTPError, ValueError) as exc:
+            raise LLMError(provider_error(exc)) from None
         try:
-            return body["choices"][0]["message"]["content"]
-        except (KeyError, IndexError) as exc:
-            raise LLMError(f"unexpected response shape from provider: {body}") from exc
+            content = body["choices"][0]["message"]["content"]
+            if not isinstance(content, str) or not content.strip():
+                raise ValueError("empty response")
+            return redact_text(content, (self.api_key,) if self.api_key else ())
+        except (KeyError, IndexError, TypeError, ValueError):
+            raise LLMError("Provider returned malformed response") from None
