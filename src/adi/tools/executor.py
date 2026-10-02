@@ -126,7 +126,7 @@ class ToolExecutor:
         try:
             return parser.parse(stdout=result.stdout, stderr=result.stderr,
                                  context={"target": target, "exit_code": result.exit_code})
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - third-party parser boundary
             return [Observation(
                 type=ObservationType.TOOL_ERROR,
                 subject=target,

@@ -18,6 +18,7 @@ duplicate their logic.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from pydantic import BaseModel
 
@@ -26,7 +27,7 @@ from adi.agent.context_builder import ContextBuilder
 from adi.agent.planner import Planner
 from adi.agent.reasoner import HypothesisEngine, InvalidHypothesisTransitionError
 from adi.agent.scheduler import ActionBudget
-from adi.findings.pipeline import FindingPipeline
+from adi.findings.pipeline import ConfirmationInvariantError, FindingPipeline
 from adi.http.workspace import HTTPWorkspace
 from adi.knowledge.hypotheses import HypothesisStatus
 from adi.knowledge.workspace import Workspace
@@ -61,6 +62,7 @@ class Orchestrator:
         http_workspace: HTTPWorkspace | None = None,
         validation_engine: ValidationEngine | None = None,
         finding_pipeline: FindingPipeline | None = None,
+        report_directory: Path | None = None,
     ):
         self.workspace = workspace
         self.executor = executor
@@ -71,6 +73,7 @@ class Orchestrator:
         self.http_workspace = http_workspace
         self.validation_engine = validation_engine
         self.finding_pipeline = finding_pipeline
+        self.report_directory = report_directory
 
     async def run(self, max_iterations: int | None = None) -> list[StepOutcome]:
         outcomes: list[StepOutcome] = []
@@ -101,9 +104,11 @@ class Orchestrator:
                 break
 
             if action.action_type == ActionType.COMPLETE:
+                self.workspace.set_assessment_status("completed")
                 outcomes.append(StepOutcome(action=action, status="completed_assessment", detail=action.reason_summary))
                 break
             if action.action_type == ActionType.ASK_USER:
+                self.workspace.set_assessment_status("paused")
                 outcomes.append(StepOutcome(action=action, status="paused", detail=action.reason_summary))
                 break
 
@@ -132,6 +137,18 @@ class Orchestrator:
             return self._dispatch_hypothesis(action)
         if action.action_type == ActionType.VERIFY_FINDING:
             return await self._dispatch_verify_finding(action)
+        if action.action_type == ActionType.GENERATE_REPORT:
+            from adi.reporting.builder import ReportBuilder
+            from adi.reporting.json_report import write_reports
+            if self.report_directory is None:
+                return StepOutcome(action=action, status="failed", detail="no report directory configured")
+            paths = write_reports(ReportBuilder(self.workspace).build(), self.report_directory)
+            self.workspace.record_action(
+                action_type=action.action_type.value, parameters_json="{}",
+                reason_summary=action.reason_summary, scope_allowed=True,
+                scope_reason="internal report from persisted facts", status="completed")
+            return StepOutcome(action=action, status="completed",
+                               detail=", ".join(str(p) for p in paths.values()))
         return self._dispatch_unsupported(action)
 
     async def _dispatch_run_tool(self, action: PlannedAction) -> StepOutcome:
@@ -246,7 +263,7 @@ class Orchestrator:
 
         self.workspace.record_action(
             action_type=action.action_type.value, capability=action.capability,
-            tool="", target="", parameters_json=json.dumps(params),
+            tool="", target=hyp.id, parameters_json=json.dumps(params),
             reason_summary=action.reason_summary, scope_allowed=True,
             scope_reason="internal action", status="completed",
         )
@@ -308,7 +325,7 @@ class Orchestrator:
                                 detail=f"[{result.outcome.value}] {result.detail}")
         except HypothesisAlreadyResolvedError as exc:
             return StepOutcome(action=action, status="failed", detail=str(exc))
-        except ValidationBudgetExhaustedError as exc:
+        except (ValidationBudgetExhaustedError, ConfirmationInvariantError) as exc:
             return StepOutcome(action=action, status="failed", detail=str(exc))
         except (KeyError, ValueError) as exc:
             return StepOutcome(action=action, status="failed",

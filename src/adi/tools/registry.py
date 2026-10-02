@@ -7,6 +7,7 @@ let the registry resolve candidate tools — see spec section 51.
 
 from __future__ import annotations
 
+import logging
 import shutil
 from pathlib import Path
 
@@ -83,7 +84,8 @@ class ToolRegistry:
                 raw = yaml.safe_load(tool_yaml.read_text()) or {}
                 metadata = ToolMetadata.model_validate(raw)
                 metadata.skill_dir = tool_yaml.parent
-            except Exception:  # malformed skill shouldn't crash discovery
+            except (OSError, ValueError, yaml.YAMLError) as exc:
+                logging.getLogger(__name__).debug("Invalid tool skill %s: %s", tool_yaml, exc)
                 continue
             binary = metadata.execution.binary or metadata.name
             binary_path = shutil.which(binary)

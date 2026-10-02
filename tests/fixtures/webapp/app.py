@@ -160,7 +160,11 @@ class DemoAppHandler(BaseHTTPRequestHandler):
             self._send(500, trace, content_type="text/plain")
             return
 
-        if self.path == "/":
+        if self.path == "/phase4":
+            self._send(200, '<html><body>Controlled lab: user_a owns order 1; user_b owns order 2.'
+                       '<a href="/api/orders-broken/1">Order comparison A</a>'
+                       '<a href="/api/orders-safe/1">Order comparison B</a></body></html>')
+        elif self.path == "/":
             self._send(200, _HOME_HTML, extra_headers={"Set-Cookie": "connect.sid=s%3Afake.sig; Path=/"})
         elif self.path == "/login":
             self._send(200, _LOGIN_HTML)

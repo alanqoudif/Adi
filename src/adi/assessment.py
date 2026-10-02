@@ -146,7 +146,8 @@ class Assessment:
 
         return Orchestrator(self.workspace, self.executor, planner, context_builder, budget,
                              http_workspace=self.http_workspace,
-                             validation_engine=validation_engine, finding_pipeline=finding_pipeline)
+                             validation_engine=validation_engine, finding_pipeline=finding_pipeline,
+                             report_directory=self.directory / "reports")
 
     @staticmethod
     def list_ids(project_root: Path | None = None) -> list[str]:

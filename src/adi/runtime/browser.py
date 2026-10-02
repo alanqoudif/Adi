@@ -16,6 +16,8 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 try:
+    from playwright.async_api import Error as PlaywrightError
+    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
     from playwright.async_api import async_playwright
 
     _PLAYWRIGHT_AVAILABLE = True
@@ -71,7 +73,7 @@ class BrowserRuntime:
                 browser = await p.chromium.launch(headless=True)
                 await browser.close()
             return True
-        except Exception:
+        except (PlaywrightError, OSError):
             # covers "playwright installed but `playwright install` (the
             # browser binaries) was never run" and any other launch failure
             return False
@@ -117,7 +119,7 @@ class BrowserRuntime:
             await page.goto(url, timeout=timeout_ms)
             try:
                 await page.wait_for_load_state("networkidle", timeout=timeout_ms)
-            except Exception:
+            except PlaywrightTimeoutError:
                 pass  # best-effort — a page with long-polling never goes idle
 
             html = await page.content()

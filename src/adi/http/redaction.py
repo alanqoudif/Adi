@@ -38,7 +38,7 @@ def safe_body_preview(body: bytes | str, content_type: str = "", max_len: int = 
             return f"<binary content, {len(body)} bytes>"
         try:
             text = body.decode("utf-8", errors="replace")
-        except Exception:
+        except UnicodeError:
             return f"<binary content, {len(body)} bytes>"
     else:
         text = body

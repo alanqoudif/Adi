@@ -11,7 +11,17 @@ import json
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text, create_engine
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    String,
+    Text,
+    create_engine,
+    inspect,
+    text,
+)
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -57,6 +67,9 @@ class AssessmentRecord(Base):
     evidence_items: Mapped[list[EvidenceRecord]] = relationship(back_populates="assessment")
     validation_actions: Mapped[list[ValidationActionRecord]] = relationship(back_populates="assessment")
     critic_reviews: Mapped[list[CriticReviewRecord]] = relationship(back_populates="assessment")
+    positive_observations: Mapped[list[PositiveObservationRecord]] = relationship(
+        back_populates="assessment"
+    )
 
 
 class HostRecord(Base):
@@ -283,11 +296,40 @@ class ValidationActionRecord(Base):
     session_id: Mapped[str] = mapped_column(String, default="")
     parameters_json: Mapped[str] = mapped_column(Text, default="{}")
     outcome: Mapped[str] = mapped_column(String, default="")  # ValidationOutcome value
+    scope_allowed: Mapped[bool] = mapped_column(Boolean, default=False)
+    reason_summary: Mapped[str] = mapped_column(Text, default="")
     detail: Mapped[str] = mapped_column(Text, default="")
     evidence_ids_json: Mapped[str] = mapped_column(Text, default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     assessment: Mapped[AssessmentRecord] = relationship(back_populates="validation_actions")
+
+
+class ValidationBudgetRecord(Base):
+    __tablename__ = "validation_budget"
+    hypothesis_id: Mapped[str] = mapped_column(ForeignKey("hypothesis.id"), primary_key=True)
+    max_actions: Mapped[int] = mapped_column(default=8)
+
+
+class PositiveObservationRecord(Base):
+    """A security control that behaved correctly (spec Phase 4 section 6).
+    Deliberately separate from findings — secure behavior never becomes a
+    Finding."""
+
+    __tablename__ = "positive_observation"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    assessment_id: Mapped[str] = mapped_column(ForeignKey("assessment.id"))
+    category: Mapped[str] = mapped_column(String, default="")
+    title: Mapped[str] = mapped_column(String)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    asset: Mapped[str] = mapped_column(String, default="")
+    endpoint: Mapped[str] = mapped_column(String, default="")
+    session: Mapped[str] = mapped_column(String, default="")
+    evidence_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    assessment: Mapped[AssessmentRecord] = relationship(back_populates="positive_observations")
 
 
 class CriticReviewRecord(Base):
@@ -339,6 +381,11 @@ class FindingRecord(Base):
 def create_engine_for(db_path: str):
     engine = create_engine(f"sqlite:///{db_path}", future=True)
     Base.metadata.create_all(engine)
+    # Additive checkpoint compatibility; never invent authorization for old rows.
+    columns = {c["name"] for c in inspect(engine).get_columns("validation_action")}
+    with engine.begin() as conn:
+        if "scope_allowed" not in columns:
+            conn.execute(text("ALTER TABLE validation_action ADD COLUMN scope_allowed BOOLEAN DEFAULT 0"))
     return engine
 
 

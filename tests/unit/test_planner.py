@@ -8,12 +8,12 @@ from adi.llm.mock import MockLLM
 
 
 def make_context(**overrides) -> PlanningContext:
-    defaults = dict(
-        goal="find the flag", scope_name="lab", scope_mode="lab", targets=["lab.local"],
-        assets=[], endpoints=[], sessions=[], active_hypotheses=[], rejected_hypothesis_titles=[],
-        recent_actions=[], recent_observation_summaries=[], consecutive_failures=0,
-        actions_used=0, actions_remaining=150, available_capabilities=["enumerate_services"],
-    )
+    defaults = {
+        "goal": "find the flag", "scope_name": "lab", "scope_mode": "lab", "targets": ["lab.local"],
+        "assets": [], "endpoints": [], "sessions": [], "active_hypotheses": [], "rejected_hypothesis_titles": [],
+        "recent_actions": [], "recent_observation_summaries": [], "consecutive_failures": 0,
+        "actions_used": 0, "actions_remaining": 150, "available_capabilities": ["enumerate_services"],
+    }
     defaults.update(overrides)
     return PlanningContext(**defaults)
 

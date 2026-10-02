@@ -133,7 +133,6 @@ async def test_58_false_positive_scanner_indication_is_rejected(tmp_path, demo_a
     engine.hypothesis_engine.transition(
         hyp.id, HypothesisStatus.INVESTIGATING, new_supporting_observation_ids=[scanner_evidence.id],
     )
-    store.link_to_finding  # (not used — evidence isn't linked to a finding until confirmed)
 
     # independent validation — this is what actually determines truth
     result = await engine.execute(ValidationAction(
@@ -267,7 +266,7 @@ async def test_60_confirmed_finding_has_a_complete_evidence_chain(tmp_path, demo
 
 @pytest.mark.asyncio
 async def test_61_scanner_and_validator_agree_produce_one_finding(tmp_path, demo_app):
-    workspace, http_ws, store, engine = build_stack(tmp_path)
+    workspace, _http_ws, store, engine = build_stack(tmp_path)
     pipeline = FindingPipeline(workspace, store)
     endpoint = "/"
 

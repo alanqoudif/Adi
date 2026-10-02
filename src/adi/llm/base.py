@@ -91,7 +91,7 @@ class LLMProvider(ABC):
 _JSON_BLOCK_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
-def _parse_and_validate(raw: str, schema: type[T]) -> T:
+def _parse_and_validate[T: BaseModel](raw: str, schema: type[T]) -> T:
     text = raw.strip()
     if text.startswith("```"):
         text = text.strip("`")

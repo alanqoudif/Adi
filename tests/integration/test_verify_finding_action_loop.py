@@ -48,7 +48,7 @@ def demo_app():
 
 
 def _action(**kwargs) -> PlannedAction:
-    defaults = dict(action_type=ActionType.VERIFY_FINDING, reason_summary="r", expected_information_gain="g")
+    defaults = {"action_type": ActionType.VERIFY_FINDING, "reason_summary": "r", "expected_information_gain": "g"}
     defaults.update(kwargs)
     return PlannedAction(**defaults)
 

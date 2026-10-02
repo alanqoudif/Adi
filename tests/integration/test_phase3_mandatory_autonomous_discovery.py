@@ -61,7 +61,7 @@ def demo_app():
 
 
 def _action(action_type, **kwargs) -> PlannedAction:
-    defaults = dict(reason_summary="autonomous step", expected_information_gain="discovers more surface")
+    defaults = {"reason_summary": "autonomous step", "expected_information_gain": "discovers more surface"}
     defaults.update(kwargs)
     return PlannedAction(action_type=action_type, **defaults)
 

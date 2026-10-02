@@ -4,22 +4,48 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from pathlib import Path
 
 import typer
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 
 from adi import __version__
 from adi.assessment import Assessment, discover_skills_dir
 from adi.config.settings import load_config
 from adi.llm.base import LLMError, MalformedResponseError
 from adi.llm.router import ProviderNotConfiguredError, build_provider
+from adi.reporting.redaction import known_secrets, redact_text
 from adi.runtime.docker_runtime import DockerKaliRuntime
 from adi.scope.models import AssessmentMode, Scope
 from adi.tools.registry import ToolRegistry
 
 app = typer.Typer(add_completion=False, help="Adi — autonomous security assessment workspace.")
-console = Console()
+class RedactingConsole(Console):
+    """Redact at the rendering boundary, including untrusted table cells."""
+    secrets: tuple[str, ...] = ()
+
+    def print(self, *objects, **kwargs):
+        secrets = self.secrets + known_secrets()
+        cleaned = []
+        for obj in objects:
+            if isinstance(obj, Table):
+                for column in obj.columns:
+                    column._cells[:] = [Text(redact_text(str(c), secrets)) for c in column._cells]
+            elif isinstance(obj, str):
+                obj = redact_text(obj, secrets)
+            cleaned.append(obj)
+        return super().print(*cleaned, **kwargs)
+
+
+console = RedactingConsole()
+
+
+def _load_assessment(assessment_id, config):
+    assessment = Assessment.resume(assessment_id, config)
+    console.secrets = known_secrets(assessment.workspace.load_scope())
+    return assessment
 
 
 @app.callback(invoke_without_command=True)
@@ -56,14 +82,14 @@ def doctor():
         ok = False
 
     try:
-        import sqlalchemy  # noqa: F401
+        import sqlalchemy  # noqa: F401 - availability probe
         console.print("[green]✓[/green] SQLite/SQLAlchemy ready")
     except ImportError:
         console.print("[red]✗[/red] SQLAlchemy not installed")
         ok = False
 
     try:
-        import playwright  # noqa: F401
+        import playwright  # noqa: F401 - availability probe
         console.print("[green]✓[/green] Playwright installed")
     except ImportError:
         console.print("[yellow]○[/yellow] Playwright not installed (browser capabilities disabled)")
@@ -132,7 +158,7 @@ def _tool_version(tool) -> str:
             output = (result.stdout or result.stderr).strip().splitlines()
             if output:
                 return output[0][:40]
-        except Exception:
+        except (OSError, subprocess.SubprocessError):
             continue
     return "unknown"
 
@@ -262,7 +288,7 @@ def run_tool(
     fold results into its knowledge graph. Useful for Phase 1 manual
     operation and for testing tool skills end-to-end."""
     config = load_config()
-    assessment = Assessment.resume(assessment_id, config)
+    assessment = _load_assessment(assessment_id, config)
     params = {"ports": ports} if ports else {}
 
     async def _run():
@@ -270,7 +296,7 @@ def run_tool(
 
     try:
         observations = asyncio.run(_run())
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - surface plugin/runtime errors at the CLI boundary
         console.print(f"[red]Error:[/red] {exc}")
         raise typer.Exit(1)
 
@@ -282,11 +308,9 @@ def run_tool(
 @app.command()
 def status(assessment_id: str = typer.Argument(...)):
     """Show the current state of an assessment, including discovered web
-    attack surface (Phase 3)."""
-    from adi.agent.reasoner import HypothesisEngine
-
+    attack surface and security validation state."""
     config = load_config()
-    assessment = Assessment.resume(assessment_id, config)
+    assessment = _load_assessment(assessment_id, config)
     ws = assessment.workspace
     scope = ws.load_scope()
     hosts = ws.list_hosts()
@@ -294,19 +318,27 @@ def status(assessment_id: str = typer.Argument(...)):
     endpoints = ws.list_endpoints()
     sessions = ws.list_sessions()
     actions = ws.list_actions()
+    hypotheses = ws.list_hypotheses()
     findings = ws.list_findings()
     exchanges = ws.list_http_exchanges()
     observations = ws.list_observations()
-    hyp_engine = HypothesisEngine(ws)
-    active = hyp_engine.active()
-    rejected = hyp_engine.rejected()
+    evidence = ws.list_evidence()
+    validations = ws.list_validation_actions()
+    reviews = ws.list_critic_reviews()
+    positives = ws.list_positive_observations()
 
     parameter_count = sum(len(ws.list_parameters(e.id)) for e in endpoints)
     form_count = sum(1 for e in endpoints if "POST" in e.methods_json and ws.list_parameters(e.id))
     technologies = {o.value.get("name") for o in observations if o.type == "technology_fingerprint"}
-    scanner_indications = [o for o in observations if o.type == "scanner_alert"]
     web_apps = len({e.host_id for e in endpoints})
-    confirmed = [f for f in findings if f.status == "confirmed"]
+
+    hyp_counts = {s: 0 for s in
+                  ("new", "investigating", "supported", "validating", "confirmed", "rejected", "blocked")}
+    for h in hypotheses:
+        hyp_counts[h.status] = hyp_counts.get(h.status, 0) + 1
+    finding_counts = {s: 0 for s in ("indicated", "supported", "confirmed")}
+    for f in findings:
+        finding_counts[f.status] = finding_counts.get(f.status, 0) + 1
 
     console.print(f"[bold]Assessment:[/bold] {assessment.id} ({scope.name})")
     console.print(f"Mode:          {scope.mode.value}")
@@ -322,18 +354,24 @@ def status(assessment_id: str = typer.Argument(...)):
     console.print(f"Sessions:              {', '.join(s.name for s in sessions) or 'none'}")
     console.print(f"Technologies:          {', '.join(sorted(t for t in technologies if t)) or 'none'}")
     console.print(f"HTTP exchanges:        {len(exchanges)}")
-    console.print(f"Scanner indications:   {len(scanner_indications)}")
     console.print()
-    console.print(f"Active hypotheses:     {len(active)}")
-    console.print(f"Rejected hypotheses:   {len(rejected)}")
-    console.print(f"Confirmed findings:    {len(confirmed)}")
+    console.print("Hypotheses:    " + ", ".join(f"{k} {v}" for k, v in hyp_counts.items()))
+    console.print("Findings:      " + ", ".join(f"{k} {v}" for k, v in finding_counts.items())
+                   or "Findings:      none")
+    console.print(f"Evidence:              {len(evidence)}")
+    console.print(f"Validation actions:    {len(validations)}")
+    console.print(f"Critic reviews:        {len(reviews)}")
+    console.print(f"Positive observations: {len(positives)}")
     console.print()
+    if validations:
+        last_v = validations[-1]
+        console.print(f"Last validation: {last_v.created_at} {last_v.action_type} -> {last_v.outcome}")
     if actions:
         last = actions[-1]
         console.print(f"Last action:   {last.action_type} {last.tool} {last.target} [{last.status}]")
     else:
         console.print("Last action:   (none yet)")
-    console.print(f"Current state: {'active' if scope.max_actions > len(actions) else 'budget exhausted'}")
+    console.print(f"Current state: {ws.assessment_status()}")
 
 
 @app.command()
@@ -349,8 +387,216 @@ def assessments():
 
 @app.command()
 def resume(assessment_id: str = typer.Argument(...)):
-    """Resume an existing assessment (alias of 'status' for Phase 1)."""
+    """Reopen persisted assessment state without repeating completed validation."""
     status(assessment_id)
+
+
+@app.command("evidence")
+def evidence_cmd(
+    assessment_id: str = typer.Argument(...),
+    evidence_id: str = typer.Argument(None, help="Evidence ID (e.g. EV-003) for full detail."),
+):
+    """List evidence, or show full sanitized detail for one item."""
+    from adi.reporting.ids import display_id_map, resolve_id
+
+    config = load_config()
+    assessment = _load_assessment(assessment_id, config)
+    ws = assessment.workspace
+    items = ws.list_evidence()
+    id_map = display_id_map(items, "EV")
+
+    if evidence_id is None:
+        table = Table(title="Evidence")
+        for col in ("ID", "Type", "Source", "Timestamp", "Hypothesis", "Finding", "Summary"):
+            table.add_column(col)
+        for e in items:
+            table.add_row(id_map[e.id], e.type, e.source, str(e.created_at)[:19],
+                          ", ".join(_json(e.related_hypothesis_ids_json)) or "-",
+                          ", ".join(_json(e.related_finding_ids_json)) or "-",
+                          (e.summary or "")[:60])
+        console.print(table)
+        return
+
+    raw_id = resolve_id(items, "EV", evidence_id)
+    record = ws.get_evidence(raw_id) if raw_id else None
+    if record is None:
+        console.print(f"[red]No evidence '{evidence_id}' found.[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[bold]Evidence {id_map[record.id]}[/bold] ({record.id})")
+    console.print(f"Type:              {record.type}")
+    console.print(f"Source:            {record.source}")
+    console.print(f"Timestamp:         {record.created_at}")
+    console.print(f"Subject:           {record.subject}")
+    console.print(f"Summary:           {record.summary}")
+    console.print(f"Confidence:        {record.confidence}")
+    console.print(f"Hash:              {record.hash}")
+    console.print(f"Related hypotheses: {', '.join(_json(record.related_hypothesis_ids_json)) or 'none'}")
+    console.print(f"Related findings:   {', '.join(_json(record.related_finding_ids_json)) or 'none'}")
+    if record.raw_reference:
+        console.print(f"Raw reference:     {record.raw_reference}")
+    console.print("\n[bold]Sanitized preview:[/bold]")
+    console.print((record.sanitized_preview or "(none)")[:2000], markup=False)
+
+
+@app.command("hypotheses")
+def hypotheses_cmd(assessment_id: str = typer.Argument(...)):
+    """List all hypotheses for an assessment."""
+    from adi.reporting.ids import display_id_map
+
+    config = load_config()
+    ws = _load_assessment(assessment_id, config).workspace
+    items = ws.list_hypotheses()
+    id_map = display_id_map(items, "ADI-H")
+
+    table = Table(title="Hypotheses")
+    for col in ("ID", "Status", "Category", "Confidence", "Title", "Evidence"):
+        table.add_column(col)
+    for h in items:
+        evidence_count = len(set(_json(h.supporting_observation_ids_json)) |
+                             set(_json(h.contradicting_observation_ids_json)))
+        table.add_row(id_map[h.id], h.status, h.category or "-", f"{h.confidence:.2f}",
+                      h.title[:60], str(evidence_count))
+    console.print(table)
+    console.print("\nRun 'adi hypothesis <assessment-id> <id>' for full detail.")
+
+
+@app.command("hypothesis")
+def hypothesis_cmd(assessment_id: str = typer.Argument(...), hypothesis_id: str = typer.Argument(...)):
+    """Show full detail for one hypothesis."""
+    from adi.reporting.ids import resolve_id
+
+    config = load_config()
+    ws = _load_assessment(assessment_id, config).workspace
+    items = ws.list_hypotheses()
+    raw_id = resolve_id(items, "ADI-H", hypothesis_id)
+    record = next((h for h in items if h.id == raw_id), None)
+    if record is None:
+        console.print(f"[red]No hypothesis '{hypothesis_id}' found.[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[bold]{record.title}[/bold]")
+    console.print(f"Category:   {record.category or 'uncategorized'}")
+    console.print(f"Status:     {record.status}")
+    console.print(f"Confidence: {record.confidence:.2f}")
+    console.print("Supporting evidence:    " + ", ".join(_json(record.supporting_observation_ids_json)))
+    console.print("Contradicting evidence: " + ", ".join(_json(record.contradicting_observation_ids_json)))
+    import json
+    console.print("Validation plan: " + json.dumps(_json(record.validation_plan_json)))
+
+    validations = ws.list_validation_actions(hypothesis_id=record.id)
+    console.print(f"\nValidation actions used: {len(validations)}")
+    limit = ws.validation_limit(record.id)
+    console.print(f"Remaining validation budget: {max(0, limit - len(validations))} / {limit}")
+    for v in validations:
+        console.print(f"  - {v.id} {v.action_type}: {v.outcome} — {v.detail}\n    Reason: {v.reason_summary or 'not recorded'}")
+
+    related_findings = [f for f in ws.list_findings() if f.hypothesis_id == record.id]
+    console.print("\nRelated findings: " + (", ".join(f.id for f in related_findings) or "none"))
+
+
+@app.command("findings")
+def findings_cmd(assessment_id: str = typer.Argument(...)):
+    """List all findings for an assessment."""
+    from adi.reporting.ids import display_id_map
+
+    config = load_config()
+    ws = _load_assessment(assessment_id, config).workspace
+    items = ws.list_findings()
+    id_map = display_id_map(items, "ADI-F")
+
+    table = Table(title="Findings")
+    for col in ("ID", "Severity", "Confidence", "Status", "Category", "Title", "Affected"):
+        table.add_column(col)
+    for f in items:
+        endpoints = ", ".join(_json(f.affected_endpoints_json))
+        table.add_row(id_map[f.id], f.severity.upper(), f"{f.confidence:.2f}", f.status,
+                      f.category, f.title[:50], endpoints[:30] or "-")
+    console.print(table)
+    console.print("\nRun 'adi finding <assessment-id> <id>' for full detail.")
+
+
+@app.command("finding")
+def finding_cmd(assessment_id: str = typer.Argument(...), finding_id: str = typer.Argument(...)):
+    """Show full sanitized detail for one finding."""
+    from adi.reporting.ids import resolve_id
+
+    config = load_config()
+    ws = _load_assessment(assessment_id, config).workspace
+    items = ws.list_findings()
+    raw_id = resolve_id(items, "ADI-F", finding_id)
+    record = next((f for f in items if f.id == raw_id), None)
+    if record is None:
+        console.print(f"[red]No finding '{finding_id}' found.[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[bold]{record.title}[/bold]")
+    console.print(f"Severity:   {record.severity.upper()}")
+    console.print(f"Confidence: {record.confidence:.2f}")
+    console.print(f"Status:     {record.status}")
+    console.print(f"Category:   {record.category}")
+    console.print("Affected assets: " + (", ".join(_json(record.affected_assets_json)) or "none"))
+    console.print("Affected endpoints: " + (", ".join(_json(record.affected_endpoints_json)) or "none"))
+    console.print("Affected roles: " + (", ".join(_json(record.affected_roles_json)) or "none"))
+    console.print(f"\nSummary: {record.summary}")
+    console.print(f"\nImpact: {record.impact or '(not characterized)'}")
+    console.print(f"\nValidation summary: {record.validation_summary or '(none)'}")
+    console.print("Evidence: " + (", ".join(_json(record.evidence_ids_json)) or "none"))
+    if record.critic_review_id:
+        review = ws.get_critic_review(record.critic_review_id)
+        if review:
+            console.print(f"\nCritic review: {review.decision} — concerns: {'; '.join(_json(review.concerns_json)) or 'none'}")
+    console.print(f"\nRemediation: {record.remediation or '(none)'}")
+    console.print("References: " + (", ".join(_json(record.references_json)) or "none"))
+
+
+def _json(value: str):
+    import json as _j
+    try:
+        return _j.loads(value) if value else []
+    except _j.JSONDecodeError:
+        return []
+
+
+@app.command("report")
+def report_cmd(
+    assessment_id: str = typer.Argument(...),
+    format: str = typer.Option("both", "--format", help="markdown | json | both"),
+    output: str = typer.Option(None, "--output", help="Output directory (default: .adi/assessments/<id>/reports/)"),
+):
+    """Generate a Markdown/JSON security assessment report from stored state."""
+    from adi.reporting.builder import ReportBuilder
+    from adi.reporting.json_report import write_reports
+
+    config = load_config()
+    assessment = _load_assessment(assessment_id, config)
+    report = ReportBuilder(assessment.workspace).build()
+
+    out_dir = Path(output) if output else assessment.directory / "reports"
+    if format not in ("markdown", "json", "both"):
+        raise typer.BadParameter("format must be markdown, json or both")
+    formats = {"markdown": ("markdown",), "json": ("json",), "both": ("markdown", "json")}[format]
+    written = write_reports(report, out_dir, formats)
+
+    console.print(f"[bold]Report generated for {assessment.id}[/bold]")
+    for fmt, path in written.items():
+        console.print(f"  {fmt}: {path}")
+    console.print(f"\nConfirmed findings: {len(report.findings)}  |  "
+                  f"Rejected hypotheses: {len(report.rejected_hypotheses)}  |  "
+                  f"Positive controls: {len(report.positive_security_observations)}")
+
+
+@app.command("teach")
+def teach_cmd(assessment_id: str, hypothesis_id: str):
+    """Explain a hypothesis using stored actions and evidence, never hidden reasoning."""
+    from adi.reporting.ids import resolve_id
+    from adi.reporting.teach import explain_hypothesis
+    ws = _load_assessment(assessment_id, load_config()).workspace
+    raw_id = resolve_id(ws.list_hypotheses(), "ADI-H", hypothesis_id)
+    if raw_id is None:
+        raise typer.BadParameter("hypothesis not found")
+    for label, value in explain_hypothesis(ws, raw_id).items():
+        console.print(f"{label}: {value}", markup=False)
 
 
 if __name__ == "__main__":

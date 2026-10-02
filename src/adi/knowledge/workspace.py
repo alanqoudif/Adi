@@ -26,9 +26,11 @@ from adi.knowledge.db import (
     HypothesisRecord,
     ObservationRecord,
     ParameterRecord,
+    PositiveObservationRecord,
     ServiceRecord,
     SessionRecord,
     ValidationActionRecord,
+    ValidationBudgetRecord,
     make_session_factory,
     new_id,
 )
@@ -87,6 +89,24 @@ class Workspace:
             record = session.get(AssessmentRecord, self.assessment_id)
             assert record is not None
             return Scope.model_validate_json(record.scope_json)
+
+    def assessment_status(self) -> str:
+        with self._session_factory() as session:
+            return session.get(AssessmentRecord, self.assessment_id).status
+
+    def set_assessment_status(self, status: str) -> None:
+        with self._session_factory() as session:
+            session.get(AssessmentRecord, self.assessment_id).status = status
+            session.commit()
+
+    def validation_limit(self, hypothesis_id: str, default: int = 8) -> int:
+        with self._session_factory() as session:
+            row = session.get(ValidationBudgetRecord, hypothesis_id)
+            if row is None:
+                row = ValidationBudgetRecord(hypothesis_id=hypothesis_id, max_actions=default)
+                session.add(row)
+                session.commit()
+            return row.max_actions
 
     # -- hosts / services ----------------------------------------------------
 
@@ -528,6 +548,15 @@ class Workspace:
             record.related_finding_ids_json = json.dumps(linked)
             session.commit()
 
+    def attach_evidence_exchanges(self, evidence_id: str, exchange_ids: list[str]) -> None:
+        with self._session_factory() as session:
+            row = session.get(EvidenceRecord, evidence_id)
+            metadata = json.loads(row.metadata_json)
+            metadata["http_exchange_ids"] = exchange_ids
+            row.metadata_json = json.dumps(metadata)
+            row.raw_reference = ", ".join(exchange_ids) or row.raw_reference
+            session.commit()
+
     def list_evidence(self) -> list[EvidenceRecord]:
         with self._session_factory() as session:
             rows = session.execute(
@@ -555,6 +584,26 @@ class Workspace:
             if hypothesis_id is not None:
                 stmt = stmt.where(ValidationActionRecord.hypothesis_id == hypothesis_id)
             rows = session.execute(stmt.order_by(ValidationActionRecord.created_at)).scalars().all()
+            session.expunge_all()
+            return list(rows)
+
+    # -- positive security observations (Phase 4) ---------------------------------
+
+    def record_positive_observation(self, **fields) -> str:
+        obs_id = new_id("pos")
+        with self._session_factory() as session:
+            session.add(PositiveObservationRecord(
+                id=obs_id, assessment_id=self.assessment_id, **fields))
+            session.commit()
+        return obs_id
+
+    def list_positive_observations(self) -> list[PositiveObservationRecord]:
+        with self._session_factory() as session:
+            rows = session.execute(
+                select(PositiveObservationRecord).where(
+                    PositiveObservationRecord.assessment_id == self.assessment_id)
+                .order_by(PositiveObservationRecord.created_at)
+            ).scalars().all()
             session.expunge_all()
             return list(rows)
 

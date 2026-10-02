@@ -115,9 +115,8 @@ class _Parser(HTMLParser):
                 self.result.tech_hints.append(TechHint(content, "medium", "meta_generator"))
         elif tag == "div" and attrs_d.get("id") == "__next":
             self.result.tech_hints.append(TechHint("Next.js", "medium", "dom_marker"))
-        elif tag.startswith(("ng-", "v-")) or any(k.startswith(("ng-", "v-", "data-reactroot")) for k in attrs_d):
-            if "data-reactroot" in attrs_d:
-                self.result.tech_hints.append(TechHint("React", "low", "dom_marker"))
+        elif (tag.startswith(("ng-", "v-")) or any(k.startswith(("ng-", "v-", "data-reactroot")) for k in attrs_d)) and "data-reactroot" in attrs_d:
+            self.result.tech_hints.append(TechHint("React", "low", "dom_marker"))
 
     def handle_endtag(self, tag):
         if tag == "title":

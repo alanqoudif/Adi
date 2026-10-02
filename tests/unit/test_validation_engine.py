@@ -54,7 +54,7 @@ async def _login(http_ws, base, username):
 
 @pytest.mark.asyncio
 async def test_broken_object_authorization_is_confirmed_by_validator(tmp_path, demo_app):
-    engine, workspace, http_ws = build_engine(tmp_path)
+    engine, _workspace, http_ws = build_engine(tmp_path)
     await _login(http_ws, demo_app.base_url, "user_a")
     await _login(http_ws, demo_app.base_url, "user_b")
 
@@ -73,7 +73,7 @@ async def test_broken_object_authorization_is_confirmed_by_validator(tmp_path, d
 
 @pytest.mark.asyncio
 async def test_safe_object_authorization_is_rejected_by_validator(tmp_path, demo_app):
-    engine, workspace, http_ws = build_engine(tmp_path)
+    engine, _workspace, http_ws = build_engine(tmp_path)
     await _login(http_ws, demo_app.base_url, "user_a")
     await _login(http_ws, demo_app.base_url, "user_b")
 
@@ -92,7 +92,7 @@ async def test_safe_object_authorization_is_rejected_by_validator(tmp_path, demo
 
 @pytest.mark.asyncio
 async def test_broken_authentication_boundary_detected(tmp_path, demo_app):
-    engine, workspace, http_ws = build_engine(tmp_path)
+    engine, _workspace, _http_ws = build_engine(tmp_path)
     hyp = engine.hypothesis_engine.create(title="possible missing authentication on /api/leaky-profile")
     result = await engine.execute(ValidationAction(
         action_type=ValidationActionType.CHECK_AUTH_BOUNDARY, hypothesis_id=hyp.id,
@@ -103,7 +103,7 @@ async def test_broken_authentication_boundary_detected(tmp_path, demo_app):
 
 @pytest.mark.asyncio
 async def test_correct_authentication_boundary_rejected(tmp_path, demo_app):
-    engine, workspace, http_ws = build_engine(tmp_path)
+    engine, _workspace, _http_ws = build_engine(tmp_path)
     hyp = engine.hypothesis_engine.create(title="possible missing authentication on /api/private")
     result = await engine.execute(ValidationAction(
         action_type=ValidationActionType.CHECK_AUTH_BOUNDARY, hypothesis_id=hyp.id,
@@ -114,7 +114,7 @@ async def test_correct_authentication_boundary_rejected(tmp_path, demo_app):
 
 @pytest.mark.asyncio
 async def test_cookie_hardening_issue_detected(tmp_path, demo_app):
-    engine, workspace, http_ws = build_engine(tmp_path)
+    engine, _workspace, _http_ws = build_engine(tmp_path)
     hyp = engine.hypothesis_engine.create(title="session cookie missing defensive attributes")
     result = await engine.execute(ValidationAction(
         action_type=ValidationActionType.CHECK_COOKIE_ATTRIBUTE, hypothesis_id=hyp.id,
@@ -127,7 +127,7 @@ async def test_cookie_hardening_issue_detected(tmp_path, demo_app):
 
 @pytest.mark.asyncio
 async def test_permissive_cors_detected(tmp_path, demo_app):
-    engine, workspace, http_ws = build_engine(tmp_path)
+    engine, _workspace, _http_ws = build_engine(tmp_path)
     hyp = engine.hypothesis_engine.create(title="permissive CORS policy")
     result = await engine.execute(ValidationAction(
         action_type=ValidationActionType.CHECK_CORS_POLICY, hypothesis_id=hyp.id,
@@ -138,7 +138,7 @@ async def test_permissive_cors_detected(tmp_path, demo_app):
 
 @pytest.mark.asyncio
 async def test_debug_disclosure_detected(tmp_path, demo_app):
-    engine, workspace, http_ws = build_engine(tmp_path)
+    engine, workspace, _http_ws = build_engine(tmp_path)
     hyp = engine.hypothesis_engine.create(title="possible information disclosure on /api/debug-error")
     result = await engine.execute(ValidationAction(
         action_type=ValidationActionType.VERIFY_SCANNER_INDICATION, hypothesis_id=hyp.id,
@@ -152,7 +152,7 @@ async def test_debug_disclosure_detected(tmp_path, demo_app):
 
 @pytest.mark.asyncio
 async def test_missing_security_headers_detected(tmp_path, demo_app):
-    engine, workspace, http_ws = build_engine(tmp_path)
+    engine, _workspace, _http_ws = build_engine(tmp_path)
     hyp = engine.hypothesis_engine.create(title="missing recommended security headers")
     result = await engine.execute(ValidationAction(
         action_type=ValidationActionType.CHECK_SECURITY_HEADER, hypothesis_id=hyp.id,
@@ -163,7 +163,7 @@ async def test_missing_security_headers_detected(tmp_path, demo_app):
 
 @pytest.mark.asyncio
 async def test_session_invalidation_after_logout(tmp_path, demo_app):
-    engine, workspace, http_ws = build_engine(tmp_path)
+    engine, _workspace, http_ws = build_engine(tmp_path)
     await _login(http_ws, demo_app.base_url, "user_a")
     hyp = engine.hypothesis_engine.create(title="session usable after logout")
     result = await engine.execute(ValidationAction(
@@ -176,7 +176,7 @@ async def test_session_invalidation_after_logout(tmp_path, demo_app):
 
 @pytest.mark.asyncio
 async def test_validation_budget_exhausts_per_hypothesis(tmp_path, demo_app):
-    engine, workspace, http_ws = build_engine(tmp_path, max_actions_per_hypothesis=1)
+    engine, _workspace, _http_ws = build_engine(tmp_path, max_actions_per_hypothesis=1)
     hyp = engine.hypothesis_engine.create(title="repeatedly checked")
     await engine.execute(ValidationAction(
         action_type=ValidationActionType.CHECK_AUTH_BOUNDARY, hypothesis_id=hyp.id,
@@ -191,7 +191,7 @@ async def test_validation_budget_exhausts_per_hypothesis(tmp_path, demo_app):
 
 @pytest.mark.asyncio
 async def test_stop_after_proof_refuses_further_validation(tmp_path, demo_app):
-    engine, workspace, http_ws = build_engine(tmp_path)
+    engine, _workspace, http_ws = build_engine(tmp_path)
     await _login(http_ws, demo_app.base_url, "user_a")
     await _login(http_ws, demo_app.base_url, "user_b")
     hyp = engine.hypothesis_engine.create(title="broken object authorization")

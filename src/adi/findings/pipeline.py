@@ -31,11 +31,11 @@ from adi.knowledge.workspace import Workspace
 # LLM never authors these; they come from the validator-assigned category.
 _CATEGORY_GUIDANCE: dict[str, tuple[str, str]] = {
     "broken_object_authorization": (
-        "An authenticated user can read another user's resource by changing an object "
-        "identifier, without any ownership check.",
-        "Enforce an object-ownership check on every request that accepts an object "
+        ("An authenticated user can read another user's resource by changing an object "
+        "identifier, without any ownership check."),
+        ("Enforce an object-ownership check on every request that accepts an object "
         "identifier: verify the authenticated session is the resource's owner (or holds "
-        "an explicit grant) before returning it.",
+        "an explicit grant) before returning it."),
     ),
     "broken_function_authorization": (
         "A normal-privilege session can reach a function intended for a higher-privilege role.",
@@ -46,30 +46,34 @@ _CATEGORY_GUIDANCE: dict[str, tuple[str, str]] = {
         "Require authentication on this endpoint and verify the session before returning data.",
     ),
     "cookie_hardening": (
-        "A session-related cookie is missing the Secure and/or HttpOnly attribute, "
-        "increasing the risk of session theft via network interception or script injection.",
-        "Set `Secure`, `HttpOnly`, and an appropriate `SameSite` attribute on all "
-        "session/authentication cookies.",
+        ("A session-related cookie is missing the Secure and/or HttpOnly attribute, "
+        "increasing the risk of session theft via network interception or script injection."),
+        ("Set `Secure`, `HttpOnly`, and an appropriate `SameSite` attribute on all "
+        "session/authentication cookies."),
     ),
     "cors_misconfiguration": (
-        "The server reflects an arbitrary Origin while allowing credentials, letting any "
-        "website make authenticated cross-origin requests on a victim's behalf.",
-        "Allow credentialed CORS only from an explicit allow-list of trusted origins; "
-        "never reflect an arbitrary Origin when Access-Control-Allow-Credentials is true.",
+        ("The server reflects an arbitrary Origin while allowing credentials, letting any "
+        "website make authenticated cross-origin requests on a victim's behalf."),
+        ("Allow credentialed CORS only from an explicit allow-list of trusted origins; "
+        "never reflect an arbitrary Origin when Access-Control-Allow-Credentials is true."),
     ),
     "information_disclosure": (
-        "A response includes verbose error output (stack trace, internal file paths, or "
+        ("A response includes verbose error output (stack trace, internal file paths, or "
         "database error text) that can aid an attacker in understanding the application's "
-        "internals.",
-        "Disable verbose/debug error output in the deployed environment; return a generic "
-        "error message and log the detail server-side only.",
+        "internals."),
+        ("Disable verbose/debug error output in the deployed environment; return a generic "
+        "error message and log the detail server-side only."),
     ),
     "missing_security_header": (
-        "One or more recommended security headers are absent. This is a hardening gap, "
-        "not by itself a directly exploitable vulnerability.",
+        ("One or more recommended security headers are absent. This is a hardening gap, "
+        "not by itself a directly exploitable vulnerability."),
         "Add the missing security headers appropriate to this application's threat model.",
     ),
 }
+
+
+class ConfirmationInvariantError(RuntimeError):
+    """A confirmed Finding must never be an orphan (spec Phase 4 section 21)."""
 
 
 @dataclass
@@ -134,17 +138,48 @@ class FindingPipeline:
                     HypothesisStatus.REJECTED, None, decision, review.decision, critic_review_id,
                 )
             # ACCEPT falls through to confirmation below
-            self._safe_transition(hypothesis_id, HypothesisStatus.CONFIRMED)
-            finding_id = self._create_or_merge_finding(hypothesis, evidence, category, endpoints, decision, "confirmed")
+            finding_id = self._confirm(hypothesis, evidence, category, endpoints, decision,
+                                       critic_review_id)
             return FindingPipelineResult(
                 HypothesisStatus.CONFIRMED, finding_id, decision, review.decision, critic_review_id,
             )
 
         # no critic configured (e.g. no LLM provider) — confirm directly from
         # deterministic evidence; still gated by the FindingVerifier above.
-        self._safe_transition(hypothesis_id, HypothesisStatus.CONFIRMED)
-        finding_id = self._create_or_merge_finding(hypothesis, evidence, category, endpoints, decision, "confirmed")
+        finding_id = self._confirm(hypothesis, evidence, category, endpoints, decision)
         return FindingPipelineResult(HypothesisStatus.CONFIRMED, finding_id, decision)
+
+    def check_confirmation_invariants(self, hypothesis_id: str, evidence: list) -> list[str]:
+        """Returns the list of violated invariants (empty = may confirm):
+        a confirmed finding needs a hypothesis, at least one evidence item,
+        a recorded validation action (whose execution was scope-enforced by
+        the HTTP client), and a critic review when a critic is configured."""
+        problems = []
+        if self.hypothesis_engine.get(hypothesis_id) is None:
+            problems.append("no hypothesis")
+        if not evidence:
+            problems.append("no evidence")
+        validations = self.workspace.list_validation_actions(hypothesis_id=hypothesis_id)
+        if not validations:
+            problems.append("no validation action record")
+        if not any(v.scope_allowed and v.outcome == "supports" for v in validations):
+            problems.append("no scope-authorized supporting validation")
+        if any(self.evidence_store.get(e.id) is None for e in evidence):
+            problems.append("unpersisted evidence")
+        if self.critic is not None and not any(
+                r.decision == "accept" for r in self.workspace.list_critic_reviews(hypothesis_id)):
+            problems.append("no critic review (required by policy)")
+        return problems
+
+    def _confirm(self, hypothesis, evidence, category, endpoints, decision,
+                 critic_review_id: str | None = None) -> str:
+        problems = self.check_confirmation_invariants(hypothesis.id, evidence)
+        if problems:
+            raise ConfirmationInvariantError(
+                f"cannot confirm hypothesis {hypothesis.id}: {', '.join(problems)}")
+        self._safe_transition(hypothesis.id, HypothesisStatus.CONFIRMED)
+        return self._create_or_merge_finding(
+            hypothesis, evidence, category, endpoints, decision, "confirmed", critic_review_id)
 
     def _safe_transition(self, hypothesis_id: str, target: HypothesisStatus) -> None:
         try:
@@ -154,7 +189,7 @@ class FindingPipeline:
 
     def _create_or_merge_finding(
         self, hypothesis, evidence, category: str, affected_endpoints: list[str],
-        decision: VerificationDecision, status: str,
+        decision: VerificationDecision, status: str, critic_review_id: str | None = None,
     ) -> str:
         evidence_ids = [e.id for e in evidence]
         existing = self.dedup.find_duplicate(category, affected_endpoints) if affected_endpoints else None
@@ -162,7 +197,8 @@ class FindingPipeline:
         if existing:
             self.dedup.merge_evidence(existing.id, evidence_ids)
             if status == "confirmed" and existing.status != "confirmed":
-                self.workspace.update_finding(existing.id, status="confirmed", hypothesis_id=hypothesis.id)
+                self.workspace.update_finding(existing.id, status="confirmed", hypothesis_id=hypothesis.id,
+                                              critic_review_id=critic_review_id)
             return existing.id
 
         impact, remediation = _CATEGORY_GUIDANCE.get(
@@ -176,7 +212,7 @@ class FindingPipeline:
             impact=impact, remediation=remediation,
             evidence_ids_json=json.dumps(evidence_ids),
             affected_endpoints_json=json.dumps(affected_endpoints),
-            hypothesis_id=hypothesis.id,
+            hypothesis_id=hypothesis.id, critic_review_id=critic_review_id,
             validation_summary="; ".join(decision.reasons),
         )
         for evidence_id in evidence_ids:

@@ -3,8 +3,8 @@ from adi.agent.scheduler import ActionBudget, fingerprint
 
 
 def make_action(**overrides) -> PlannedAction:
-    defaults = dict(action_type=ActionType.RUN_TOOL, tool="nmap", target="lab.local",
-                     capability="enumerate_services", parameters={})
+    defaults = {"action_type": ActionType.RUN_TOOL, "tool": "nmap", "target": "lab.local",
+                     "capability": "enumerate_services", "parameters": {}}
     defaults.update(overrides)
     return PlannedAction(**defaults)
 

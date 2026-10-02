@@ -94,7 +94,7 @@ class HTTPWorkspace:
             extraction = extract_html(canonical, body_text)
             title = extraction.title
 
-        self.workspace.record_http_exchange(
+        exchange.id = self.workspace.record_http_exchange(
             method=exchange.request.method.value,
             url=canonical,
             session_id=exchange.request.session_id,
@@ -273,7 +273,7 @@ class HTTPWorkspace:
         """For lightweight discovery requests (robots.txt, sitemap.xml) that
         don't go through full HTML extraction but should still appear in
         the HTTP audit trail."""
-        self.workspace.record_http_exchange(
+        exchange.id = self.workspace.record_http_exchange(
             method=exchange.request.method.value,
             url=canonicalize_url(exchange.request.url),
             session_id=exchange.request.session_id,

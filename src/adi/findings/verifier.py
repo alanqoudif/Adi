@@ -61,8 +61,8 @@ class FindingVerifier:
         if contradicting:
             return VerificationDecision(
                 VerificationStatus.SUPPORTED,
-                [f"{len(supporting)} supporting vs {len(contradicting)} contradicting evidence item(s) — "
-                 f"contradiction present, narrow the hypothesis before confirming"],
+                [(f"{len(supporting)} supporting vs {len(contradicting)} contradicting evidence item(s) — "
+                 f"contradiction present, narrow the hypothesis before confirming")],
             )
 
         reproducible_types = {

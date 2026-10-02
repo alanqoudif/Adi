@@ -14,6 +14,8 @@ from pydantic import BaseModel, Field
 from adi.agent.reasoner import HypothesisEngine
 from adi.knowledge.hypotheses import Hypothesis
 from adi.knowledge.workspace import Workspace
+from adi.reporting.ids import display_id_map
+from adi.reporting.redaction import known_secrets, redact_structure, redact_text
 from adi.scope.models import Scope
 from adi.tools.registry import ToolRegistry
 
@@ -21,6 +23,8 @@ MAX_RECENT_OBSERVATIONS = 20
 MAX_RECENT_ACTIONS = 10
 MAX_ENDPOINTS_LISTED = 15
 MAX_RECENT_HTTP = 10
+MAX_RECENT_VALIDATIONS = 5
+MAX_POSITIVE_CONTROLS = 5
 
 
 class AssetSummary(BaseModel):
@@ -68,6 +72,17 @@ class ActionSummary(BaseModel):
     capability: str = ""
 
 
+class ConfirmedFindingSummary(BaseModel):
+    display_id: str
+    title: str
+    severity: str
+
+
+class PositiveControlSummary(BaseModel):
+    title: str
+    endpoint: str = ""
+
+
 class PlanningContext(BaseModel):
     """Everything the planner is allowed to see. Kept small and typed so it
     can be rendered into a compact prompt deterministically."""
@@ -93,6 +108,9 @@ class PlanningContext(BaseModel):
     actions_used: int
     actions_remaining: int
     available_capabilities: list[str]
+    confirmed_findings: list[ConfirmedFindingSummary] = Field(default_factory=list)
+    recent_validation_results: list[str] = Field(default_factory=list)
+    positive_controls: list[PositiveControlSummary] = Field(default_factory=list)
 
     def render(self) -> str:
         """A deterministic, human-readable rendering for the LLM prompt."""
@@ -147,10 +165,14 @@ class PlanningContext(BaseModel):
                 state = "authenticated" if s.authenticated else "unauthenticated"
                 lines.append(f"  - {s.name} ({state})")
 
+        lines.append("\nSecurity state:")
         lines.append("\nActive hypotheses:")
         if self.active_hypotheses:
             for h in self.active_hypotheses:
-                lines.append(f"  - [{h.status.value}] {h.title} (confidence {h.confidence:.2f}, id={h.id})")
+                evidence_count = len(set(h.supporting_observation_ids) | set(h.contradicting_observation_ids))
+                lines.append(f"  - [{h.status.value}] {h.title[:200]} "
+                             f"(category: {h.category or 'uncategorized'}, confidence {h.confidence:.2f}, "
+                             f"evidence: {evidence_count}, id={h.id})")
         else:
             lines.append("  (none)")
 
@@ -158,6 +180,22 @@ class PlanningContext(BaseModel):
             lines.append("\nRejected hypotheses (do not re-investigate):")
             for title in self.rejected_hypothesis_titles:
                 lines.append(f"  - {title}")
+
+        if self.recent_validation_results:
+            lines.append("\nRecent validation results:")
+            for r in self.recent_validation_results:
+                lines.append(f"  - {r}")
+
+        if self.confirmed_findings:
+            lines.append("\nConfirmed findings:")
+            for f in self.confirmed_findings:
+                lines.append(f"  - {f.display_id} {f.title} (severity: {f.severity})")
+
+        if self.positive_controls:
+            lines.append("\nPositive controls:")
+            for p in self.positive_controls:
+                suffix = f" ({p.endpoint})" if p.endpoint else ""
+                lines.append(f"  - {p.title}{suffix}")
 
         lines.append("\nRecent actions:")
         if self.recent_actions:
@@ -181,7 +219,7 @@ class PlanningContext(BaseModel):
                 lines.append(f"  - {summary}")
 
         lines.append(f"\nAvailable capabilities: {', '.join(self.available_capabilities) or 'none'}")
-        return "\n".join(lines)
+        return redact_text("\n".join(lines), known_secrets())
 
 
 class ContextBuilder:
@@ -238,8 +276,8 @@ class ContextBuilder:
             for a in actions[-MAX_RECENT_ACTIONS:]
         ]
 
-        active = hyp_engine.active()
-        rejected_titles = [h.title for h in hyp_engine.rejected()]
+        active = hyp_engine.active()[:10]
+        rejected_titles = [h.title[:200] for h in hyp_engine.rejected()[-5:]]
 
         recent_observations = self.workspace.list_observations()[-MAX_RECENT_OBSERVATIONS:]
         observation_summaries = [
@@ -250,7 +288,28 @@ class ContextBuilder:
             {cap for t in self.registry.all() if t.available for cap in t.metadata.capabilities}
         )
 
-        return PlanningContext(
+        findings = self.workspace.list_findings()
+        finding_ids = display_id_map(findings, "ADI-F")
+        confirmed_findings = [
+            ConfirmedFindingSummary(display_id=finding_ids[f.id], title=f.title[:200], severity=f.severity)
+            for f in findings if f.status == "confirmed"
+        ]
+
+        confirmed_findings = confirmed_findings[-10:]
+
+        validations = self.workspace.list_validation_actions()[-MAX_RECENT_VALIDATIONS:]
+        hyp_ids = display_id_map(self.workspace.list_hypotheses(), "ADI-H")
+        recent_validation_results = [
+            f"{hyp_ids.get(v.hypothesis_id, v.hypothesis_id)} {v.outcome} "
+            f"({next((h.status for h in self.workspace.list_hypotheses() if h.id == v.hypothesis_id), 'unknown')})" for v in validations
+        ]
+
+        positives = self.workspace.list_positive_observations()[-MAX_POSITIVE_CONTROLS:]
+        positive_controls = [
+            PositiveControlSummary(title=p.title[:200], endpoint=p.endpoint[:200]) for p in positives
+        ]
+
+        context = PlanningContext(
             goal=self.goal,
             scope_name=self.scope.name,
             scope_mode=self.scope.mode.value,
@@ -272,7 +331,13 @@ class ContextBuilder:
             actions_used=len(actions),
             actions_remaining=max(0, self.scope.max_actions - len(actions)),
             available_capabilities=capabilities,
+            confirmed_findings=confirmed_findings,
+            recent_validation_results=recent_validation_results,
+            positive_controls=positive_controls,
         )
+
+        return PlanningContext.model_validate(
+            redact_structure(context.model_dump(), known_secrets(self.scope)))
 
     @staticmethod
     def _group_endpoints(endpoints) -> list[EndpointGroupSummary]:
