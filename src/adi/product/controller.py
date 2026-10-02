@@ -105,6 +105,30 @@ class ProductController:
     def auto_resume_candidate(self) -> "SessionRecordLike | None":
         return self.sessions.most_recent()
 
+    async def set_goal(self, goal: str) -> Scope:
+        """Update the assessment's goal text. This is the only way free-form
+        chat affects authorization-relevant state: it can narrow/focus what
+        the (still fully scoped) planner looks at, never widen the actual
+        targets/permissions boundary — only `update_scope_fields` below can
+        do that, and only from an explicit scope command, never silently
+        from a chat message."""
+        assert self.assessment is not None
+        scope = self.assessment.workspace.load_scope()
+        scope.goal = goal
+        self.assessment.workspace.update_scope(scope)
+        await self.events.emit(EventType.SCOPE_CHANGED, field="goal", value=goal)
+        return scope
+
+    async def update_scope_fields(self, **fields) -> Scope:
+        """Explicit, operator-confirmed scope changes (targets, permissions,
+        rate limits, ...). Never called automatically from model output."""
+        assert self.assessment is not None
+        scope = self.assessment.workspace.load_scope()
+        updated = scope.model_copy(update=fields)
+        self.assessment.workspace.update_scope(updated)
+        await self.events.emit(EventType.SCOPE_CHANGED, fields=list(fields.keys()))
+        return updated
+
     # -- running ----------------------------------------------------------
 
     async def start(self, role: str = "planner", data_category: str = "general_planning") -> None:

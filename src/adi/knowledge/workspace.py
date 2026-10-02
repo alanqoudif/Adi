@@ -99,6 +99,17 @@ class Workspace:
             session.get(AssessmentRecord, self.assessment_id).status = status
             session.commit()
 
+    def update_scope(self, scope: Scope) -> None:
+        """Persist an updated `Scope` (e.g. a goal/notes change made through
+        the Product layer's natural-language scope interpretation). The
+        model is never the caller of this — scope changes are applied only
+        by the human operator through the Product controller's explicit
+        scope-editing path, never as a side effect of an LLM response."""
+        with self._session_factory() as session:
+            record = session.get(AssessmentRecord, self.assessment_id)
+            record.scope_json = scope.model_dump_json()
+            session.commit()
+
     def validation_limit(self, hypothesis_id: str, default: int = 8, *, persist: bool = True) -> int:
         with self._session_factory() as session:
             row = session.get(ValidationBudgetRecord, hypothesis_id)

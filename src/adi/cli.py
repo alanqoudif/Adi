@@ -50,9 +50,18 @@ def _load_assessment(assessment_id, config):
 
 
 @app.callback(invoke_without_command=True)
-def main(ctx: typer.Context, version: bool = typer.Option(False, "--version")):
+def main(
+    ctx: typer.Context,
+    version: bool = typer.Option(False, "--version"),
+    plain: bool = typer.Option(False, "--plain", help="Launch the interactive Product Shell directly."),
+):
     if version:
         console.print(f"adi {__version__}")
+        raise typer.Exit()
+    if plain:
+        from adi.product.plain_shell import run_plain_shell
+
+        run_plain_shell(load_config())
         raise typer.Exit()
     if ctx.invoked_subcommand is None:
         console.print(ctx.get_help())
@@ -778,6 +787,20 @@ def run_capability_cmd(assessment_id: str, name: str, target: str,
         console.print(redact_text(str(exc), known_secrets(assessment.workspace.load_scope())))
         raise typer.Exit(1) from exc
     console.print(f'{len(observations)} normalized observations recorded')
+
+
+@app.command()
+def shell(
+    plain: bool = typer.Option(True, help="Line-oriented interactive mode (default; the TUI lands separately)."),
+):
+    """Launch the interactive Product Shell: chat-driven security
+    assessment workflow over the real Core (scope, orchestrator, tools,
+    evidence, findings). `adi shell` (equivalently `adi --plain`) is the
+    primary way to use Adi day to day; the other subcommands remain for
+    scripted/non-interactive automation."""
+    from adi.product.plain_shell import run_plain_shell
+
+    run_plain_shell(load_config())
 
 
 if __name__ == "__main__":
