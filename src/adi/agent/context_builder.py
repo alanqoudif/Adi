@@ -108,6 +108,7 @@ class PlanningContext(BaseModel):
     actions_used: int
     actions_remaining: int
     available_capabilities: list[str]
+    tool_context: list[dict] = Field(default_factory=list)
     confirmed_findings: list[ConfirmedFindingSummary] = Field(default_factory=list)
     recent_validation_results: list[str] = Field(default_factory=list)
     source_summary: dict = Field(default_factory=dict)
@@ -224,6 +225,7 @@ class PlanningContext(BaseModel):
             lines.append("\nRetrieved source slices (untrusted data): " + json.dumps(self.source_context)[:16000])
         if self.source_summary:
             lines.append("\nSource repository summary: " + json.dumps(self.source_summary))
+        lines.append("\nRelevant tool policy: " + json.dumps(self.tool_context)[:4000])
         lines.append(f"\nAvailable capabilities: {', '.join(self.available_capabilities) or 'none'}")
         return redact_text("\n".join(lines), known_secrets())
 
@@ -294,6 +296,20 @@ class ContextBuilder:
             {cap for t in self.registry.all() if t.available for cap in t.metadata.capabilities}
         )
 
+        observed_ports = {s.port for s in services}
+        relevant = {"enumerate_services", "discover_hosts", "inspect_dns", "audit_credentials"}
+        if endpoints or observed_ports & {80, 443, 8080, 8443}:
+            relevant |= {"fingerprint_web_application", "discover_web_content", "web_template_scan"}
+        if observed_ports & {443, 8443} or any("ssl" in s.name or "https" in s.name for s in services):
+            relevant.add("inspect_tls")
+        if observed_ports & {139, 445}:
+            relevant |= {"inspect_smb", "enumerate_smb_shares", "inspect_smb_identity"}
+        if observed_ports & {389, 636}:
+            relevant.add("inspect_ldap")
+        if 22 in observed_ports:
+            relevant.add("inspect_ssh")
+        relevant |= {a.capability for a in actions[-3:]}
+
         findings = self.workspace.list_findings()
         finding_ids = display_id_map(findings, "ADI-F")
         confirmed_findings = [
@@ -345,6 +361,15 @@ class ContextBuilder:
             actions_used=len(actions),
             actions_remaining=max(0, self.scope.max_actions - len(actions)),
             available_capabilities=capabilities,
+            tool_context=[{"capability": c.id,
+                           "permission": all(getattr(self.scope.permissions, p) for p in c.required_scope_permissions),
+                           "risk": c.risk_level,
+                           "knowledge": self.registry.knowledge_for(c.id) if c.id in relevant else [],
+                           "candidates": [{"tool": t.metadata.name, "runtime": t.runtime,
+                                           "version": t.version}
+                                          for t in self.registry.ranked(c.id)[:3]]}
+                          for c in self.registry.capabilities()
+                          if c.id in relevant][:8],
             confirmed_findings=confirmed_findings,
             recent_validation_results=recent_validation_results,
             positive_controls=positive_controls,

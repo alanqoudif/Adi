@@ -1,30 +1,28 @@
 name: whatweb
-
 category:
-  - web
-  - fingerprinting
-
-description: >
-  Web technology fingerprinting — identifies frameworks, servers, CMSes,
-  and libraries in use by a web application.
-
+- web
+- fingerprinting
+description: "Web technology fingerprinting \u2014 identifies frameworks, servers,\
+  \ CMSes, and libraries in use by a web application.\n"
 capabilities:
-  - fingerprint_web_application
-
+- fingerprint_web_application
 risk_level: low
-
 requires:
   target: true
-
 supports:
   url: true
-
 output:
   machine_readable: true
   preferred_format: json
-
 execution:
   timeout_seconds: 120
-
 scope_requirements:
   target_must_be_authorized: true
+version_args:
+- --version
+display_name: whatweb
+trust_level: BUILT_IN_REVIEWED
+supports_rate_control: true
+documentation_source: reviewed skill
+parser: parser.py
+adapter: adapter.py

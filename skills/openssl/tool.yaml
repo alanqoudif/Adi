@@ -1,0 +1,31 @@
+name: openssl
+display_name: openssl
+category:
+- tls
+description: Reviewed bounded tls metadata provider
+capabilities:
+- inspect_tls
+- inspect_certificate
+risk_level: low
+version_args:
+- version
+binary_names: []
+requires_network: true
+requires_root: false
+supports_rate_control: true
+approval_requirement: false
+normalized_entities:
+- TLSObservation
+scope_requirements:
+  target_must_be_authorized: true
+  explicit_auth_testing_permission: false
+output:
+  machine_readable: false
+  preferred_format: text
+execution:
+  binary: openssl
+  priority: 10
+  timeout_seconds: 30
+input_schema:
+  target: one authorized host
+  parameters: typed reviewed operation only

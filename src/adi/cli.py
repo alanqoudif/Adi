@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 from pathlib import Path
 
@@ -97,11 +98,14 @@ def doctor():
     registry = ToolRegistry(discover_skills_dir())
     tools = registry.discover()
     available = [t for t in tools if t.available]
+    if docker_available:
+        asyncio.run(registry.detect_runtime(docker_runtime))
+        tools = registry.all()
     console.print(f"[green]✓[/green] {len(tools)} security tool skill(s) registered, "
                   f"{len(available)} available on PATH")
-    for tool in tools:
+    for tool in sorted(tools, key=lambda t: (t.metadata.category[0], t.metadata.name)):
         mark = "[green]✓[/green]" if tool.available else "[yellow]○[/yellow]"
-        console.print(f"    {mark} {tool.metadata.name}")
+        console.print(f"    {mark} {tool.metadata.name} [{tool.runtime}] {tool.version}")
     console.print("\nSource tools (local offline scanning):")
     for tool in tools:
         if "source" in tool.metadata.category:
@@ -129,11 +133,17 @@ def tools():
     """List discovered security tool skills, their availability, and which
     capability each one provides."""
     registry = ToolRegistry(discover_skills_dir())
-    discovered = sorted(registry.discover(), key=lambda t: t.metadata.name)
+    registry.discover()
+    runtime = DockerKaliRuntime(image=load_config().runtime.image)
+    if asyncio.run(runtime.is_available()):
+        asyncio.run(registry.detect_runtime(runtime))
+    discovered = sorted(registry.all(), key=lambda t: t.metadata.name)
     table = Table(title="Tool Skills")
     table.add_column("Name")
     table.add_column("Available")
     table.add_column("Version")
+    table.add_column("Runtime")
+    table.add_column("Trust")
     table.add_column("Risk")
     table.add_column("Capabilities")
     for tool in discovered:
@@ -142,6 +152,8 @@ def tools():
             tool.metadata.name,
             "[green]available[/green]" if tool.available else "[yellow]unavailable[/yellow]",
             version,
+            ", ".join(f"{name}:{'yes' if state['available'] else 'no'}" for name, state in tool.availability_by_runtime.items()),
+            tool.metadata.trust_level.value,
             tool.metadata.risk_level,
             ", ".join(tool.metadata.capabilities),
         )
@@ -152,31 +164,7 @@ def tools():
 def _tool_version(tool) -> str:
     """Best-effort version probe — never fails the command if the binary
     doesn't support a version flag or isn't actually runnable."""
-    import os
-    import subprocess
-    import tempfile
-
-    import certifi
-
-    for flag in ("--version", "-version", "-V"):
-        try:
-            with tempfile.TemporaryDirectory(prefix='adi-version-') as directory:
-                env = dict(os.environ)
-                env.update({'SEMGREP_ENABLE_VERSION_CHECK': '0', 'SEMGREP_SEND_METRICS': 'off',
-                            'SEMGREP_LOG_FILE': directory + '/semgrep.log',
-                            'SEMGREP_SETTINGS_FILE': directory + '/settings.yml',
-                            'SSL_CERT_FILE': certifi.where()})
-                result = subprocess.run(
-                    [tool.binary_path, flag], capture_output=True, text=True, timeout=5,
-                    check=False, env=env)
-            if result.returncode != 0:
-                continue
-            output = (result.stdout or result.stderr).strip().splitlines()
-            if output:
-                return output[0][:40]
-        except (OSError, subprocess.SubprocessError):
-            continue
-    return "unknown"
+    return tool.version
 
 
 @app.command()
@@ -195,6 +183,11 @@ def tool(name: str = typer.Argument(..., help="Tool name, e.g. 'nmap' or 'ffuf'.
     console.print(f"Capabilities: {', '.join(meta.capabilities) or 'none'}")
     console.print(f"Categories:   {', '.join(meta.category) or 'none'}")
     console.print(f"Risk level:   {meta.risk_level}")
+    console.print(f"Trust:        {meta.trust_level.value}")
+    console.print(f"Runtime:      {registered.runtime}")
+    console.print(f"Parser:       deterministic {meta.parser}; preferred {meta.output.preferred_format}")
+    console.print(f"Permissions:  {meta.scope_requirements.model_dump()}")
+    console.print(f"Availability by runtime: {registered.availability_by_runtime}")
     status_text = "[green]available[/green]" if registered.available else "[yellow]unavailable[/yellow]"
     console.print(f"Availability: {status_text}")
     if registered.available:
@@ -225,6 +218,7 @@ def lab(
         help="The goal given to the planner in --autonomous mode.",
     ),
     max_actions: int = typer.Option(150, help="Action budget for this assessment."),
+    approval_mode: bool = typer.Option(False, "--approval-mode", help="Require operator approval for elevated tool actions."),
     autonomous: bool = typer.Option(
         False, "--autonomous", help="Run the LLM-driven autonomous planning loop."
     ),
@@ -233,6 +227,7 @@ def lab(
     an isolated target (CTF box, local vulnerable app, mock exam environment)."""
     config = load_config()
     scope = Scope(
+        approval_mode=approval_mode,
         name=name or f"lab-{target}",
         mode=AssessmentMode.LAB,
         goal=goal,
@@ -730,6 +725,59 @@ def source_scan_cmd(assessment_id: str, capability: str):
     assessment = _load_assessment(assessment_id, load_config())
     result = asyncio.run(SourceScanner(assessment.workspace, assessment.registry).scan(capability))
     console.print(str(result), markup=False)
+
+
+
+
+@app.command()
+def capabilities(assessment_id: str = typer.Option(None)):
+    """Show capability providers and current scope permission."""
+    registry = ToolRegistry(discover_skills_dir())
+    registry.discover()
+    scope = _load_assessment(assessment_id, load_config()).workspace.load_scope() if assessment_id else None
+    for cap in registry.capabilities():
+        allowed = all(getattr(scope.permissions, p) for p in cap.required_scope_permissions) if scope else None
+        console.print(f"{cap.id} risk={cap.risk_level} permission={allowed if scope else 'no scope loaded'}")
+        for provider in registry.by_capability(cap.id):
+            console.print(f"  {provider.metadata.name}: {'available' if provider.available else 'unavailable'} [{provider.runtime}] {provider.version}")
+
+
+@app.command()
+def capability(name: str, assessment_id: str = typer.Option(None)):
+    """Describe a capability and deterministic fallback policy."""
+    registry = ToolRegistry(discover_skills_dir())
+    registry.discover()
+    match = next((c for c in registry.capabilities() if c.id == name), None)
+    if not match:
+        raise typer.BadParameter('unknown capability')
+    scope = _load_assessment(assessment_id, load_config()).scope_engine.scope if assessment_id else None
+    data = match.model_dump(mode='json')
+    data['currently_available_tools'] = [t.metadata.name for t in registry.ranked(name)]
+    data['current_scope_permission'] = (all(getattr(scope.permissions, p) for p in match.required_scope_permissions)
+                                        if scope else 'no scope loaded')
+    console.print_json(json.dumps(data))
+
+
+@app.command('discover-tools')
+def discover_tools():
+    """Refresh known reviewed executables in PATH without filesystem traversal."""
+    tools()
+
+
+@app.command('run-capability')
+def run_capability_cmd(assessment_id: str, name: str, target: str,
+                       inputs_file: Path = typer.Option(None)):  # noqa: B008 - Typer CLI declaration
+    """Run typed capability inputs; authentication uses references, never candidate values."""
+    from adi.reporting.redaction import known_secrets, redact_text
+    assessment = _load_assessment(assessment_id, load_config())
+    parameters = json.loads(inputs_file.read_text()) if inputs_file else {}
+    try:
+        observations = asyncio.run(assessment.executor.run_capability(
+            name, target, parameters, reason_summary='operator typed capability request'))
+    except Exception as exc:
+        console.print(redact_text(str(exc), known_secrets(assessment.workspace.load_scope())))
+        raise typer.Exit(1) from exc
+    console.print(f'{len(observations)} normalized observations recorded')
 
 
 if __name__ == "__main__":

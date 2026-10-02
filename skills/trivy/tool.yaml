@@ -14,3 +14,11 @@ requires:
   target: true
 scope_requirements:
   target_must_be_authorized: true
+version_args:
+- --version
+display_name: trivy
+trust_level: BUILT_IN_REVIEWED
+supports_rate_control: true
+documentation_source: reviewed skill
+parser: parser.py
+adapter: adapter.py

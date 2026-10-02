@@ -30,6 +30,7 @@ from adi.agent.scheduler import ActionBudget
 from adi.findings.pipeline import ConfirmationInvariantError, FindingPipeline
 from adi.http.workspace import HTTPWorkspace
 from adi.knowledge.hypotheses import HypothesisStatus
+from adi.knowledge.observations import ObservationType
 from adi.knowledge.workspace import Workspace
 from adi.llm.base import LLMError, MalformedResponseError
 from adi.tools.executor import ScopeViolationError, ToolExecutionError, ToolExecutor
@@ -76,6 +77,7 @@ class Orchestrator:
         self.report_directory = report_directory
 
     async def run(self, max_iterations: int | None = None) -> list[StepOutcome]:
+        await self.executor._detect()
         outcomes: list[StepOutcome] = []
         iterations = 0
         while True:
@@ -168,11 +170,17 @@ class Orchestrator:
             if not action.capability:
                 return StepOutcome(action=action, status="failed",
                                     detail="run_tool action has neither a tool nor a capability to resolve")
-            resolved = self.executor.registry.resolve(action.capability)
-            if resolved is None:
-                return StepOutcome(action=action, status="failed",
-                                    detail=f"no available tool provides capability '{action.capability}'")
-            tool_name = resolved.metadata.name
+            try:
+                observations = await self.executor.run_capability(
+                    action.capability, action.target, action.parameters,
+                    reason_summary=action.reason_summary)
+                status = "failed" if observations and all(o.type == ObservationType.TOOL_ERROR for o in observations) else "completed"
+                return StepOutcome(action=action, status=status,
+                                   detail=f"{len(observations)} normalized observations")
+            except ScopeViolationError as exc:
+                return StepOutcome(action=action, status="blocked", detail=str(exc))
+            except ToolExecutionError as exc:
+                return StepOutcome(action=action, status="failed", detail=str(exc))
 
         try:
             observations = await self.executor.run(

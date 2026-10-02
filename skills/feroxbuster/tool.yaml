@@ -1,30 +1,31 @@
 name: feroxbuster
-
 category:
-  - web
-  - content-discovery
+- web
+- content-discovery
+description: 'Fast, recursive content/directory discovery against a web application.
 
-description: >
-  Fast, recursive content/directory discovery against a web application.
-
+  '
 capabilities:
-  - discover_web_content
-
-risk_level: low
-
+- discover_web_content
+risk_level: moderate
 requires:
   target: true
-
 supports:
   url: true
-
 output:
   machine_readable: true
   preferred_format: jsonl
-
 execution:
   timeout_seconds: 300
   priority: 10
-
 scope_requirements:
   target_must_be_authorized: true
+version_args:
+- --version
+display_name: feroxbuster
+trust_level: BUILT_IN_REVIEWED
+supports_rate_control: true
+documentation_source: reviewed skill
+parser: parser.py
+adapter: adapter.py
+requires_wordlist: true

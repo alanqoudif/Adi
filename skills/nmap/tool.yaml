@@ -1,37 +1,38 @@
 name: nmap
-
 category:
-  - discovery
-  - network
-  - service-enumeration
-
-description: >
-  Network discovery and service enumeration utility. Identifies live hosts,
+- discovery
+- network
+- service-enumeration
+description: 'Network discovery and service enumeration utility. Identifies live hosts,
   open ports, and service/version banners.
 
+  '
 capabilities:
-  - discover_hosts
-  - enumerate_ports
-  - detect_services
-  - identify_service_versions
-
+- discover_hosts
+- enumerate_ports
+- detect_services
+- identify_service_versions
+- enumerate_services
 risk_level: low
-
 requires:
   target: true
-
 supports:
   host: true
   cidr: true
   hostname: true
-
 output:
   machine_readable: true
   preferred_format: xml
-
 execution:
   timeout_seconds: 600
   default_concurrency: 1
-
 scope_requirements:
   target_must_be_authorized: true
+version_args:
+- --version
+display_name: nmap
+trust_level: BUILT_IN_REVIEWED
+supports_rate_control: true
+documentation_source: reviewed skill
+parser: parser.py
+adapter: adapter.py

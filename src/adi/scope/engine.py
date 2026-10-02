@@ -17,6 +17,7 @@ from adi.scope.models import Scope
 # Capabilities that touch live credentials / account state and therefore
 # require `permissions.authentication_testing` regardless of tool chosen.
 _AUTH_TESTING_CAPABILITIES = {
+    "audit_credentials",
     "credential_audit",
     "brute_force",
     "password_spray",
@@ -53,6 +54,31 @@ class ScopeEngine:
         ) and action.target is None:
             return ScopeDecision(True, "internal action, not target-facing")
 
+        if action.capability in {"password_spray", "brute_force", "exploit_framework"}:
+            return ScopeDecision(False, "prohibited capability")
+        if action.capability == "audit_credentials":
+            if not action.target:
+                return ScopeDecision(False, "authentication audit needs one explicit target")
+            if self.scope.approval_mode:
+                approval_key = f"audit_credentials:{action.target}"
+                if approval_key not in self.scope.approved_elevated_actions:
+                    return ScopeDecision(False, "elevated action requires operator approval")
+        if (action.capability in {"discover_web_content", "fingerprint_web_application", "web_template_scan"}
+                and not self.scope.permissions.web_enumeration):
+            return ScopeDecision(False, "web_enumeration is disabled")
+        if action.capability == "capture_network_metadata":
+            try:
+                bounded = (1 <= int(action.parameters.get("packet_count", 0)) <= 100
+                           and 1 <= int(action.parameters.get("duration", 0)) <= 30)
+            except (ValueError, TypeError):
+                bounded = False
+            if (action.parameters.get("interface") not in self.scope.authorized_capture_interfaces
+                    or not action.parameters.get("reason") or not bounded):
+                return ScopeDecision(False, "capture requires authorized interface, reason and bounds")
+        if (action.capability == "inspect_pcap"
+                and action.parameters.get("capture_file") not in self.scope.authorized_capture_files):
+            return ScopeDecision(False, "capture file requires explicit operator authorization")
+
         host = self._extract_host(action.target)
 
         if host is not None and not self.scope.host_is_target(host):
@@ -76,13 +102,18 @@ class ScopeEngine:
         if (action.action_type == ActionType.SEARCH_CODE or action.capability.startswith("source")) and not self.scope.permissions.source_analysis:
             return ScopeDecision(False, "source_analysis is disabled for this assessment scope")
 
-        if action.capability.startswith("discover") and not self.scope.permissions.discovery:
+        discovery_capabilities = {
+            "enumerate_services", "identify_service_versions", "inspect_dns", "inspect_tls",
+            "inspect_certificate", "inspect_smb", "enumerate_smb", "enumerate_smb_shares",
+            "inspect_smb_identity", "inspect_ldap", "inspect_ssh", "capture_network_metadata",
+        }
+        if (action.capability.startswith("discover") or action.capability in discovery_capabilities) and not self.scope.permissions.discovery:
             return ScopeDecision(False, "discovery is disabled for this assessment scope")
 
         if action.capability.startswith("web") and not self.scope.permissions.web_enumeration:
             return ScopeDecision(False, "web_enumeration is disabled for this assessment scope")
 
-        if action.risk == RiskLevel.HIGH:
+        if action.risk in {RiskLevel.HIGH, RiskLevel.PROHIBITED}:
             return ScopeDecision(
                 False, "action classified as high risk requires explicit operator approval"
             )

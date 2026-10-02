@@ -1,0 +1,34 @@
+name: enum4linux-ng
+display_name: enum4linux-ng
+category:
+- enterprise
+description: Reviewed bounded enterprise metadata provider
+capabilities:
+- inspect_smb
+- inspect_smb_identity
+- enumerate_smb
+risk_level: low
+version_args:
+- -h
+binary_names:
+- enum4linux-ng.py
+requires_network: true
+requires_root: false
+supports_rate_control: true
+approval_requirement: false
+normalized_entities:
+- IdentityObservation
+- Service
+scope_requirements:
+  target_must_be_authorized: true
+  explicit_auth_testing_permission: false
+output:
+  machine_readable: false
+  preferred_format: text
+execution:
+  binary: enum4linux-ng
+  priority: 10
+  timeout_seconds: 30
+input_schema:
+  target: one authorized host
+  parameters: typed reviewed operation only

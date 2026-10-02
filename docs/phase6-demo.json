@@ -1,0 +1,447 @@
+{
+  "assessment_id": "assess-f2808d8ad68c",
+  "planner": "deterministic state-based fixture; not a real LLM",
+  "real_model": "unavailable: provider not configured",
+  "outcomes": [
+    {
+      "action": {
+        "action_type": "run_tool",
+        "capability": "enumerate_services",
+        "reason_summary": "Resolve unobserved enumerate_services in the local authorized lab",
+        "expected_information_gain": "",
+        "related_hypothesis_id": null,
+        "target": "127.0.0.1",
+        "tool": null,
+        "parameters": {
+          "ports": "57095,57096"
+        },
+        "risk": "low"
+      },
+      "status": "completed",
+      "detail": "3 normalized observations"
+    },
+    {
+      "action": {
+        "action_type": "run_tool",
+        "capability": "inspect_tls",
+        "reason_summary": "Resolve unobserved inspect_tls in the local authorized lab",
+        "expected_information_gain": "",
+        "related_hypothesis_id": null,
+        "target": "127.0.0.1",
+        "tool": null,
+        "parameters": {
+          "port": 57096
+        },
+        "risk": "low"
+      },
+      "status": "completed",
+      "detail": "1 normalized observations"
+    },
+    {
+      "action": {
+        "action_type": "run_tool",
+        "capability": "discover_web_content",
+        "reason_summary": "Resolve unobserved discover_web_content in the local authorized lab",
+        "expected_information_gain": "",
+        "related_hypothesis_id": null,
+        "target": "http://127.0.0.1:57095",
+        "tool": null,
+        "parameters": {
+          "wordlist": "/Users/faisal/dev/Adi/tests/fixtures/wordlists/tiny.txt",
+          "depth": 1
+        },
+        "risk": "low"
+      },
+      "status": "completed",
+      "detail": "3 normalized observations"
+    },
+    {
+      "action": {
+        "action_type": "run_tool",
+        "capability": "audit_credentials",
+        "reason_summary": "Resolve unobserved audit_credentials in the local authorized lab",
+        "expected_information_gain": "",
+        "related_hypothesis_id": null,
+        "target": "127.0.0.1",
+        "tool": null,
+        "parameters": {},
+        "risk": "low"
+      },
+      "status": "blocked",
+      "detail": "blocked by scope engine: authentication_testing is disabled for this assessment scope"
+    },
+    {
+      "action": {
+        "action_type": "complete",
+        "capability": "",
+        "reason_summary": "Local metadata questions answered; disabled auth recorded",
+        "expected_information_gain": "",
+        "related_hypothesis_id": null,
+        "target": null,
+        "tool": null,
+        "parameters": {},
+        "risk": "low"
+      },
+      "status": "completed_assessment",
+      "detail": "Local metadata questions answered; disabled auth recorded"
+    }
+  ],
+  "services": [
+    {
+      "port": 57095,
+      "name": "http"
+    },
+    {
+      "port": 57096,
+      "name": "http"
+    }
+  ],
+  "evidence": [
+    {
+      "action_id": "act-c7c2eeb40128",
+      "tool": "nmap",
+      "version": "Nmap version 7.991 ( https://nmap.org )",
+      "runtime": "local",
+      "capability": "enumerate_services",
+      "target": "127.0.0.1",
+      "selection_reason": "Resolve unobserved enumerate_services in the local authorized lab; capability enumerate_services; reviewed provider nmap; preferred output xml; risk low; runtime local; unavailable providers: rustscan; incompatible providers: none",
+      "scope_decision": "within scope",
+      "sanitized_argv": [
+        "/opt/homebrew/bin/nmap",
+        "-sV",
+        "-oX",
+        "-",
+        "--open",
+        "--max-rate",
+        "5.0",
+        "-p",
+        "57095,57096",
+        "127.0.0.1"
+      ],
+      "started_at": "2026-10-02T13:53:17.170520+00:00",
+      "completed_at": "2026-10-02T13:53:34.660986+00:00",
+      "exit_code": 0,
+      "failure": null,
+      "parsed_observation_ids": [
+        "obs-3427e45f2c72",
+        "obs-a1fb753a8e9c",
+        "obs-19998d8f3bd2"
+      ],
+      "raw_reference": "/Users/faisal/dev/Adi/.adi/phase6-acceptance/raw/act-c7c2eeb40128.stdout.txt",
+      "partial": false,
+      "failure_cause": null,
+      "parser_version": "1"
+    },
+    {
+      "action_id": "act-f481983b433e",
+      "tool": "openssl",
+      "version": "OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)",
+      "runtime": "local",
+      "capability": "inspect_tls",
+      "target": "127.0.0.1",
+      "selection_reason": "Resolve unobserved inspect_tls in the local authorized lab; capability inspect_tls; reviewed provider openssl; preferred output text; risk low; runtime local; unavailable providers: none; incompatible providers: none",
+      "scope_decision": "within scope",
+      "sanitized_argv": [
+        "/opt/homebrew/bin/openssl",
+        "s_client",
+        "-connect",
+        "127.0.0.1:57096",
+        "-servername",
+        "127.0.0.1",
+        "-showcerts",
+        "-verify_ip",
+        "127.0.0.1"
+      ],
+      "started_at": "2026-10-02T13:53:34.695915+00:00",
+      "completed_at": "2026-10-02T13:53:34.729507+00:00",
+      "exit_code": 0,
+      "failure": null,
+      "parsed_observation_ids": [
+        "obs-fe2b748e03b1"
+      ],
+      "raw_reference": "/Users/faisal/dev/Adi/.adi/phase6-acceptance/raw/act-f481983b433e.stdout.txt",
+      "partial": false,
+      "failure_cause": null,
+      "parser_version": "1"
+    },
+    {
+      "action_id": "act-7f768ed3aad2",
+      "tool": "feroxbuster",
+      "version": "feroxbuster 2.13.1",
+      "runtime": "local",
+      "capability": "discover_web_content",
+      "target": "http://127.0.0.1:57095",
+      "selection_reason": "Resolve unobserved discover_web_content in the local authorized lab; capability discover_web_content; reviewed provider feroxbuster; preferred output jsonl; risk moderate; runtime local; unavailable providers: ffuf; incompatible providers: none",
+      "scope_decision": "within scope",
+      "sanitized_argv": [
+        "/opt/homebrew/bin/feroxbuster",
+        "-u",
+        "http://127.0.0.1:57095",
+        "-w",
+        "/Users/faisal/dev/Adi/tests/fixtures/wordlists/tiny.txt",
+        "--json",
+        "--silent",
+        "--no-state",
+        "--scan-limit",
+        "1",
+        "-t",
+        "1",
+        "-d",
+        "1",
+        "--rate-limit",
+        "5"
+      ],
+      "started_at": "2026-10-02T13:53:34.783876+00:00",
+      "completed_at": "2026-10-02T13:53:36.320582+00:00",
+      "exit_code": 0,
+      "failure": null,
+      "parsed_observation_ids": [
+        "obs-da8ee59bed5e",
+        "obs-67684678878f",
+        "obs-722e9f834b18"
+      ],
+      "raw_reference": "/Users/faisal/dev/Adi/.adi/phase6-acceptance/raw/act-7f768ed3aad2.stdout.txt",
+      "partial": false,
+      "failure_cause": null,
+      "parser_version": "1"
+    },
+    {
+      "action_id": "act-9b166cdaad7a",
+      "tool": "tcpdump",
+      "version": "tcpdump version 4.99.1 -- Apple version 161",
+      "runtime": "local",
+      "capability": "inspect_pcap",
+      "target": "127.0.0.1",
+      "selection_reason": "Inspect authorized generated header-only capture",
+      "scope_decision": "within scope",
+      "sanitized_argv": [
+        "/usr/sbin/tcpdump",
+        "-nn",
+        "-q",
+        "-c",
+        "1",
+        "-r",
+        "/Users/faisal/dev/Adi/.adi/phase6-acceptance/authorized.pcap"
+      ],
+      "started_at": "2026-10-02T13:53:36.360122+00:00",
+      "completed_at": "2026-10-02T13:53:36.369095+00:00",
+      "exit_code": 0,
+      "failure": null,
+      "parsed_observation_ids": [
+        "obs-330e01032b1d"
+      ],
+      "raw_reference": "/Users/faisal/dev/Adi/.adi/phase6-acceptance/raw/act-9b166cdaad7a.stdout.txt",
+      "partial": false,
+      "failure_cause": null,
+      "parser_version": "1"
+    }
+  ],
+  "observations": [
+    {
+      "type": "host_up",
+      "source": "nmap",
+      "value": {
+        "address": "127.0.0.1"
+      }
+    },
+    {
+      "type": "open_port",
+      "source": "nmap",
+      "value": {
+        "host": "127.0.0.1",
+        "port": 57095,
+        "protocol": "tcp",
+        "service": "http",
+        "product": "BaseHTTPServer",
+        "version": "0.6",
+        "state": "open"
+      }
+    },
+    {
+      "type": "open_port",
+      "source": "nmap",
+      "value": {
+        "host": "127.0.0.1",
+        "port": 57096,
+        "protocol": "tcp",
+        "service": "http",
+        "product": "BaseHTTPServer",
+        "version": "0.6",
+        "state": "open"
+      }
+    },
+    {
+      "type": "tls_observation",
+      "source": "openssl",
+      "value": {
+        "protocol": "TLSv1.3",
+        "cipher": "TLS_AES_256_GCM_SHA384",
+        "subject": "CN=localhost",
+        "issuer": "CN=localhost",
+        "not_after": "2026-10-03T13:53:17+00:00",
+        "verification": "18",
+        "hostname_match": true
+      }
+    },
+    {
+      "type": "web_endpoint",
+      "source": "feroxbuster",
+      "value": {
+        "host": "127.0.0.1",
+        "path": "/admin",
+        "methods": [
+          "GET"
+        ],
+        "requires_auth": false,
+        "status": 200
+      }
+    },
+    {
+      "type": "web_endpoint",
+      "source": "feroxbuster",
+      "value": {
+        "host": "127.0.0.1",
+        "path": "/",
+        "methods": [
+          "GET"
+        ],
+        "requires_auth": false,
+        "status": 200
+      }
+    },
+    {
+      "type": "web_endpoint",
+      "source": "feroxbuster",
+      "value": {
+        "host": "127.0.0.1",
+        "path": "/login",
+        "methods": [
+          "GET"
+        ],
+        "requires_auth": false,
+        "status": 200
+      }
+    },
+    {
+      "type": "network_flow_observation",
+      "source": "tcpdump",
+      "value": {
+        "source": "127.0.0.1.12345",
+        "destination": "127.0.0.1.53",
+        "metadata": "UDP, length 0"
+      }
+    }
+  ],
+  "availability": {
+    "dig": {
+      "available": true,
+      "version": "DiG 9.10.6",
+      "runtime": "local"
+    },
+    "enum4linux-ng": {
+      "available": false,
+      "version": "unknown",
+      "runtime": "local"
+    },
+    "feroxbuster": {
+      "available": true,
+      "version": "feroxbuster 2.13.1",
+      "runtime": "local"
+    },
+    "ffuf": {
+      "available": false,
+      "version": "unknown",
+      "runtime": "local"
+    },
+    "gitleaks": {
+      "available": false,
+      "version": "unknown",
+      "runtime": "local"
+    },
+    "host": {
+      "available": true,
+      "version": "host 9.10.6",
+      "runtime": "local"
+    },
+    "hydra": {
+      "available": false,
+      "version": "unknown",
+      "runtime": "local"
+    },
+    "ldapsearch": {
+      "available": true,
+      "version": "ldapsearch: @(#) $OpenLDAP: ldapsearch 2.4.28 (Aug  8 2026 17:21:53) $",
+      "runtime": "local"
+    },
+    "medusa": {
+      "available": false,
+      "version": "unknown",
+      "runtime": "local"
+    },
+    "nmap": {
+      "available": true,
+      "version": "Nmap version 7.991 ( https://nmap.org )",
+      "runtime": "local"
+    },
+    "nslookup": {
+      "available": true,
+      "version": "nslookup 9.10.6",
+      "runtime": "local"
+    },
+    "nuclei": {
+      "available": true,
+      "version": "[\u001b[34mINF\u001b[0m] Nuclei Engine Version: v3.11.1",
+      "runtime": "local"
+    },
+    "openssl": {
+      "available": true,
+      "version": "OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)",
+      "runtime": "local"
+    },
+    "osv-scanner": {
+      "available": false,
+      "version": "unknown",
+      "runtime": "local"
+    },
+    "rustscan": {
+      "available": false,
+      "version": "unknown",
+      "runtime": "local"
+    },
+    "semgrep": {
+      "available": true,
+      "version": "1.179.0",
+      "runtime": "local"
+    },
+    "smbclient": {
+      "available": false,
+      "version": "unknown",
+      "runtime": "local"
+    },
+    "ssh-keyscan": {
+      "available": true,
+      "version": "unknown",
+      "runtime": "local"
+    },
+    "tcpdump": {
+      "available": true,
+      "version": "tcpdump version 4.99.1 -- Apple version 161",
+      "runtime": "local"
+    },
+    "trivy": {
+      "available": false,
+      "version": "unknown",
+      "runtime": "local"
+    },
+    "tshark": {
+      "available": false,
+      "version": "unknown",
+      "runtime": "local"
+    },
+    "whatweb": {
+      "available": false,
+      "version": "unknown",
+      "runtime": "local"
+    }
+  }
+}

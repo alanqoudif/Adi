@@ -30,6 +30,8 @@ class ActionType(str, Enum):
 
 
 class RiskLevel(str, Enum):
+    PASSIVE = "passive"
+    PROHIBITED = "prohibited"
     LOW = "low"
     MODERATE = "moderate"
     ELEVATED = "elevated"

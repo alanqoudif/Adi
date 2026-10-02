@@ -1,0 +1,29 @@
+name: ssh-keyscan
+display_name: ssh-keyscan
+category:
+- ssh
+description: Reviewed bounded ssh metadata provider
+capabilities:
+- inspect_ssh
+risk_level: low
+version_args: []
+binary_names: []
+requires_network: true
+requires_root: false
+supports_rate_control: true
+approval_requirement: false
+normalized_entities:
+- SSHObservation
+scope_requirements:
+  target_must_be_authorized: true
+  explicit_auth_testing_permission: false
+output:
+  machine_readable: false
+  preferred_format: text
+execution:
+  binary: ssh-keyscan
+  priority: 10
+  timeout_seconds: 30
+input_schema:
+  target: one authorized host
+  parameters: typed reviewed operation only

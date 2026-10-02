@@ -14,6 +14,16 @@ from pydantic import BaseModel
 
 
 class ObservationType(str, Enum):
+    DNS_RECORD = "dns_record"
+    RESOLUTION_OBSERVATION = "resolution_observation"
+    TLS_OBSERVATION = "tls_observation"
+    SMB_SHARE = "smb_share"
+    IDENTITY_OBSERVATION = "identity_observation"
+    LDAP_OBSERVATION = "ldap_observation"
+    DIRECTORY_NAMING_CONTEXT = "directory_naming_context"
+    NETWORK_FLOW_OBSERVATION = "network_flow_observation"
+    CREDENTIAL_AUDIT_OBSERVATION = "credential_audit_observation"
+    SSH_OBSERVATION = "ssh_observation"
     HOST_UP = "host_up"
     OPEN_PORT = "open_port"
     SERVICE_BANNER = "service_banner"

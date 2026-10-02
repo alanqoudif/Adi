@@ -1,0 +1,101 @@
+name: hydra
+display_name: hydra
+category:
+- authentication
+description: Reviewed bounded authentication metadata provider
+capabilities:
+- audit_credentials
+risk_level: elevated
+version_args:
+- -h
+binary_names: []
+requires_network: true
+requires_root: false
+supports_rate_control: true
+approval_requirement: true
+normalized_entities:
+- CredentialAuditObservation
+scope_requirements:
+  target_must_be_authorized: true
+  explicit_auth_testing_permission: true
+output:
+  machine_readable: false
+  preferred_format: text
+execution:
+  binary: hydra
+  priority: 10
+  timeout_seconds: 30
+input_schema:
+  additionalProperties: false
+  properties:
+    target:
+      title: Target
+      type: string
+    service:
+      enum:
+      - ssh
+      - ftp
+      - http-get
+      title: Service
+      type: string
+    port:
+      maximum: 65535
+      minimum: 1
+      title: Port
+      type: integer
+    account_scope:
+      items:
+        type: string
+      maxItems: 3
+      minItems: 1
+      title: Account Scope
+      type: array
+    candidate_source_reference:
+      title: Candidate Source Reference
+      type: string
+    max_attempts:
+      default: 3
+      maximum: 10
+      minimum: 1
+      title: Max Attempts
+      type: integer
+    max_attempts_per_account:
+      default: 2
+      maximum: 3
+      minimum: 1
+      title: Max Attempts Per Account
+      type: integer
+    rate_limit:
+      default: 0.16666666666666666
+      exclusiveMinimum: 0
+      maximum: 0.16666666666666666
+      title: Rate Limit
+      type: number
+    timeout:
+      default: 30
+      maximum: 60
+      minimum: 1
+      title: Timeout
+      type: integer
+    stop_on_success:
+      default: true
+      title: Stop On Success
+      type: boolean
+    lockout_acknowledged:
+      title: Lockout Acknowledged
+      type: boolean
+    test_context:
+      maxLength: 300
+      minLength: 5
+      title: Test Context
+      type: string
+  required:
+  - target
+  - service
+  - port
+  - account_scope
+  - candidate_source_reference
+  - lockout_acknowledged
+  - test_context
+  title: CredentialAuditRequest
+  type: object

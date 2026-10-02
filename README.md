@@ -161,3 +161,29 @@ Run `.venv/bin/python examples/phase5_smoke.py` for the real loopback FastAPI/Se
 acceptance demo with a scripted planner/critic. See [Phase 5 acceptance](docs/phase5-acceptance.md)
 for exact commands, tool availability, fixture provenance, safety limits and source-enriched reports.
 Phase 6 has not started.
+
+## Core v1: capability-first tool intelligence (Phase 6)
+
+Adi plans **Goal → Capability → reviewed Tool → scoped execution → Evidence → common knowledge**. The planner supplies typed requests, never raw shell commands. Runtime-aware availability/version probes, deterministic selection, bounded fallback, persistent incompatibility memory, reviewed Skill V2 contracts, common parsers and tool evidence complete the original six-phase core.
+
+Reviewed tool support: Nmap, RustScan, WhatWeb, ffuf, feroxbuster, Nuclei, OpenSSL, smbclient, enum4linux-ng, ldapsearch, tcpdump, tshark, dig, host, nslookup, ssh-keyscan, Hydra, Medusa, Semgrep, Gitleaks, Trivy and OSV Scanner.
+
+For the October 2, 2026 acceptance environment:
+
+- **Live target/capture tested:** Nmap, OpenSSL, feroxbuster, tcpdump (authorized generated pcap), ldapsearch (local rootDSE fixture). Prior Phase 5 tests also exercise live Semgrep.
+- **New deterministic parser fixture coverage:** RustScan, OpenSSL, SMB providers, LDAP, packet metadata providers, Hydra/Medusa, DNS providers and SSH metadata. Auth execution/lockout is tested against a real loopback HTTP service using an explicitly labelled provider fixture, not a live Hydra binary.
+- **Absent locally:** RustScan, WhatWeb, ffuf, smbclient, enum4linux-ng, tshark, Hydra, Medusa, Gitleaks, Trivy and OSV Scanner. Optional tools do not fabricate success.
+- **Installed with availability/version checks:** dig, host, nslookup, ssh-keyscan and Nuclei. This does not claim live target E2E for them.
+- **Unavailable gates:** real-model smoke (no provider configured), Kali container build/live execution, existing Playwright browser-download gate. Optional John/Hashcat/SSL scanners were not added.
+
+```bash
+.venv/bin/adi tools
+.venv/bin/adi capabilities
+.venv/bin/adi capability inspect_tls
+.venv/bin/adi tool hydra
+.venv/bin/pytest -q
+.venv/bin/ruff check .
+.venv/bin/python examples/phase6_smoke.py
+```
+
+See [tool intelligence](docs/tool-intelligence.md), [capabilities](docs/capabilities.md), [adding tools](docs/tool-plugins.md), [authentication safeguards](docs/authentication-auditing.md), [runtime tools](docs/runtime-tools.md), and [Phase 6 acceptance report](docs/phase6-acceptance.md). The smoke creates only local HTTP/TLS lab services and writes evidence under `.adi/phase6-acceptance/`. It needs loopback-server permissions and the listed installed tools. Its state-based planner is deterministic and explicitly labelled; it does not pretend to be a real model.

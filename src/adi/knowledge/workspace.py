@@ -428,6 +428,22 @@ class Workspace:
                     observation.value["authenticated"],
                 )
 
+    def normalized_entities(self, kind: str) -> list[dict]:
+        """Merge equivalent entities while preserving every observation/evidence source."""
+        entities = {}
+        for obs in self.list_observations():
+            if obs.type != kind:
+                continue
+            value = json.loads(obs.value_json)
+            key = (obs.subject, value.get("name", ""))
+            entity = entities.setdefault(key, {"subject": obs.subject, "value": value,
+                                              "sources": [], "observation_ids": []})
+            entity["value"].update(value)
+            if obs.source not in entity["sources"]:
+                entity["sources"].append(obs.source)
+            entity["observation_ids"].append(obs.id)
+        return list(entities.values())
+
     # -- actions (audit trail) ------------------------------------------------
 
     def record_action(self, **kwargs) -> str:
