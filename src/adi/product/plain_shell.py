@@ -98,6 +98,8 @@ class PlainShell:
 
     async def run(self) -> None:
         self._print("[bold]Adi[/bold] — plain interactive mode. Type /help for commands.")
+        if self.controller.models.active_profile() is None:
+            await self._first_run_wizard()
         candidate = self.controller.auto_resume_candidate()
         if candidate is not None:
             self._print(
@@ -123,6 +125,46 @@ class PlainShell:
                 break
         if self.controller.assessment is not None and self.controller.state == ControllerState.RUNNING:
             await self.controller.stop()
+
+    async def _first_run_wizard(self) -> None:
+        """Concise first-run setup: pick a provider kind, supply a base
+        URL/model/credential, test the connection, and store it. Never
+        downloads a model and never silently defaults to a remote vendor —
+        the operator picks."""
+        self._print(
+            "\n[bold]Welcome to Adi[/bold] — no AI provider is configured yet.\n"
+            "Choose one: anthropic, openai, openrouter, ollama, vllm, lmstudio, custom"
+        )
+        kind = (await asyncio.to_thread(input, "Provider [anthropic]: ")).strip().lower() or "anthropic"
+        if kind not in ("anthropic", "openai", "openrouter", "ollama", "vllm", "lmstudio", "custom"):
+            self._print(f"Unknown provider '{kind}' — skipping setup; configure later with /provider.")
+            return
+        actual_kind = "openai-compatible" if kind == "custom" else kind
+        base_url = ""
+        if kind == "custom":
+            base_url = (await asyncio.to_thread(input, "Base URL: ")).strip()
+        model = (await asyncio.to_thread(input, "Model name (blank for provider default): ")).strip()
+        secret = ""
+        if kind != "ollama":
+            import getpass
+
+            secret = await asyncio.to_thread(getpass.getpass, "API key (leave blank if none): ")
+
+        from adi.product.models import default_locality
+
+        profile = ProviderProfile(
+            name=kind, kind=actual_kind, base_url=base_url or None, model=model,
+            locality=default_locality(actual_kind),
+        )
+        self.controller.models.add_profile(profile, secret=secret or None)
+        result = await self.controller.models.test_connection(profile)
+        if result.ok:
+            self._print(f"[green]Connected.[/green] ({result.latency_ms:.0f}ms) Provider '{kind}' is now active.")
+        else:
+            self._print(
+                f"[yellow]Could not verify the connection:[/yellow] {result.error}\n"
+                "The profile is saved; fix the settings with /provider, or retry later."
+            )
 
     async def _handle(self, line: str) -> bool:
         if line.startswith("/"):

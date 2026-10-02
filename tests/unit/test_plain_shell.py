@@ -66,6 +66,23 @@ async def test_plain_shell_chat_sets_goal_and_runs_to_completion(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_first_run_wizard_adds_provider_profile(tmp_path, monkeypatch):
+    config = AdiConfig(runtime=RuntimeConfig(type="mock"))
+    shell = PlainShell(config, project_root=tmp_path)
+    assert shell.controller.models.active_profile() is None
+
+    answers = iter(["ollama", "", ""])  # provider, model, (no secret prompt for ollama)
+    import builtins
+
+    monkeypatch.setattr(builtins, "input", lambda prompt="": next(answers))
+
+    await shell._first_run_wizard()
+    active = shell.controller.models.active_profile()
+    assert active is not None
+    assert active.kind == "ollama"
+
+
+@pytest.mark.asyncio
 async def test_plain_shell_expert_console_commands(tmp_path, monkeypatch):
     config = AdiConfig(runtime=RuntimeConfig(type="mock"))
     shell = PlainShell(config, project_root=tmp_path)

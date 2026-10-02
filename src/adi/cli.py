@@ -130,6 +130,34 @@ def doctor():
             f"but autonomous planning will not."
         )
 
+    console.print("\n[bold]Product Shell[/bold]")
+    try:
+        from adi.product.credentials import keyring_available
+        from adi.product.models import ModelManager
+        from adi.product.sessions import SessionRegistry
+
+        manager = ModelManager()
+        if keyring_available():
+            console.print("[green]✓[/green] OS keyring available for credential storage")
+        else:
+            console.print(
+                "[yellow]○[/yellow] OS keyring not available in this environment — "
+                "falling back to a 0600 file store under ~/.config/adi/"
+            )
+        profiles = manager.list_profiles()
+        if not profiles:
+            console.print("[yellow]○[/yellow] No AI provider profiles configured yet "
+                           "(run 'adi shell' for first-run setup)")
+        else:
+            console.print(f"[green]✓[/green] {len(profiles)} provider profile(s) configured "
+                           f"(active: {manager.store.active_profile or 'none'})")
+            for profile in profiles:
+                console.print(f"    {profile.name}: {profile.kind} [{profile.locality}] {profile.model or '(default model)'}")
+        sessions = SessionRegistry().list()
+        console.print(f"[green]✓[/green] {len(sessions)} Product session(s) recorded")
+    except Exception as exc:  # doctor must never crash on an optional probe
+        console.print(f"[yellow]○[/yellow] Product Shell probe failed: {exc}")
+
     console.print()
     if ok:
         console.print("[bold green]Adi is ready.[/bold green]")
