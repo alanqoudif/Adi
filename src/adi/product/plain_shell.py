@@ -490,7 +490,7 @@ class PlainShell:
 def _fmt_ts(ts: float) -> str:
     import datetime
 
-    return datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc).strftime("%Y-%m-%d %H:%M")
+    return datetime.datetime.fromtimestamp(ts, tz=datetime.UTC).strftime("%Y-%m-%d %H:%M")
 
 
 def _render_event(event: Event, *, teach: bool, expert: bool) -> str | None:
