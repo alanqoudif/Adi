@@ -16,6 +16,7 @@ dependencies = [
     "networkx>=3.2",
     "anyio>=4.3",
     "keyring>=25.0",
+    "textual>=0.60",
 ]
 
 [project.optional-dependencies]

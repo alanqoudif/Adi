@@ -485,6 +485,24 @@ class Workspace:
                 record.status = status
                 session.commit()
 
+    def mark_interrupted_actions(self) -> int:
+        """Crash recovery: any action still 'planned' (dispatched but never
+        reached `update_action_result`) when a new process attaches to this
+        workspace was interrupted by an unexpected termination, not
+        completed. Resume must never assume it succeeded. Returns the
+        number of actions marked."""
+        with self._session_factory() as session:
+            rows = session.execute(
+                select(ActionRecord).where(
+                    ActionRecord.assessment_id == self.assessment_id,
+                    ActionRecord.status == "planned",
+                )
+            ).scalars().all()
+            for row in rows:
+                row.status = "interrupted"
+            session.commit()
+            return len(rows)
+
     def list_actions(self) -> list[ActionRecord]:
         with self._session_factory() as session:
             rows = session.execute(

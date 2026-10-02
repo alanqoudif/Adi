@@ -791,16 +791,23 @@ def run_capability_cmd(assessment_id: str, name: str, target: str,
 
 @app.command()
 def shell(
-    plain: bool = typer.Option(True, help="Line-oriented interactive mode (default; the TUI lands separately)."),
+    plain: bool = typer.Option(
+        False, "--plain", help="Line-oriented interactive mode instead of the Textual TUI."
+    ),
 ):
     """Launch the interactive Product Shell: chat-driven security
     assessment workflow over the real Core (scope, orchestrator, tools,
-    evidence, findings). `adi shell` (equivalently `adi --plain`) is the
-    primary way to use Adi day to day; the other subcommands remain for
-    scripted/non-interactive automation."""
-    from adi.product.plain_shell import run_plain_shell
+    evidence, findings). This (or bare `adi`) is the primary way to use
+    Adi day to day; the other subcommands remain for scripted/
+    non-interactive automation."""
+    if plain:
+        from adi.product.plain_shell import run_plain_shell
 
-    run_plain_shell(load_config())
+        run_plain_shell(load_config())
+        return
+    from adi.product.tui.app import run_tui
+
+    run_tui(load_config())
 
 
 if __name__ == "__main__":

@@ -8,15 +8,18 @@ Product layer.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from pathlib import Path
 
 from rich.console import Console
 
 from adi.config.models import AdiConfig
+from adi.product.console import ExpertConsole
 from adi.product.controller import ControllerState, ProductController
 from adi.product.events import Event, EventType
 from adi.product.models import ProviderProfile
 from adi.product.nlu import interpret_scope_command
+from adi.product.terminal_safety import sanitize_for_terminal
 from adi.reporting.redaction import known_secrets, redact_text
 
 _HELP = """\
@@ -31,6 +34,14 @@ Common commands:
   /findings                list findings recorded so far
   /hypotheses              list hypotheses
   /evidence                list evidence
+  /tools                   browse discovered tool skills
+  /tool <name>             show detail for one tool
+  /capabilities            browse capabilities + fallback order
+  /capability <name>       show detail for one capability
+  /run <capability> <target> [k=v ...]   reviewed capability request (preview + confirm)
+  /tool-run <tool> <target> [k=v ...]    reviewed specific-tool request (preview + confirm)
+  /attack-surface          hierarchical view of hosts/services/endpoints/source
+  /source                  source intelligence summary (languages, routes, deps)
   /pause  /continue  /stop control the assessment loop
   /report                  generate markdown + JSON reports
   /teach on|off             toggle teach mode
@@ -47,11 +58,23 @@ widen scope.
 
 
 class PlainShell:
-    def __init__(self, config: AdiConfig, project_root: Path | None = None):
+    """Line-oriented Product Shell. Also the shared command interpreter
+    reused by the Textual TUI (`adi.product.tui.app`) — the TUI does not
+    reimplement command handling, it feeds lines into the same `_handle()`
+    and redirects rendering through `output_sink` instead of a live
+    terminal `Console`."""
+
+    def __init__(
+        self, config: AdiConfig, project_root: Path | None = None,
+        output_sink: "Callable[[str], None] | None" = None,
+    ):
         self.config = config
         self.project_root = project_root or Path.cwd()
         self.controller = ProductController(config, self.project_root)
-        self.console = Console()
+        import os
+
+        self.console = Console(no_color=bool(os.environ.get("NO_COLOR")), highlight=False)
+        self.output_sink = output_sink
         self.teach = False
         self.expert = False
         self.controller.events.subscribe(self._on_event)
@@ -65,7 +88,11 @@ class PlainShell:
 
     def _print(self, text: str) -> None:
         secrets = known_secrets(self.controller.assessment.workspace.load_scope()) if self.controller.assessment else ()
-        self.console.print(redact_text(text, secrets))
+        cleaned = sanitize_for_terminal(redact_text(text, secrets))
+        if self.output_sink is not None:
+            self.output_sink(cleaned)
+        else:
+            self.console.print(cleaned)
 
     # -- main loop ----------------------------------------------------------
 
@@ -168,6 +195,22 @@ class PlainShell:
             self._print_hypotheses()
         elif cmd == "/evidence":
             self._print_evidence()
+        elif cmd == "/tools":
+            self._print_tools()
+        elif cmd == "/tool":
+            self._print_tool_detail(rest.strip())
+        elif cmd == "/capabilities":
+            self._print_capabilities()
+        elif cmd == "/capability":
+            self._print_capability_detail(rest.strip())
+        elif cmd == "/run":
+            await self._run_console_command(rest, by_capability=True)
+        elif cmd == "/tool-run":
+            await self._run_console_command(rest, by_capability=False)
+        elif cmd == "/attack-surface":
+            self._print_attack_surface()
+        elif cmd == "/source":
+            self._print_source_summary()
         elif cmd == "/pause":
             await self.controller.pause()
             self._print("Paused — no new actions will be scheduled.")
@@ -241,6 +284,151 @@ class PlainShell:
             self._print("No evidence yet.")
         for e in items:
             self._print(f"  {e.id}  {e.type:<12}  {e.summary}")
+
+    def _console(self) -> ExpertConsole | None:
+        if self.controller.assessment is None:
+            self._print("No active assessment. Use /new <target> or /resume <name>.")
+            return None
+        return ExpertConsole(self.controller.assessment)
+
+    def _print_tools(self) -> None:
+        console_ = self._console()
+        if console_ is None:
+            return
+        for t in console_.list_tools():
+            status = "available" if t["available"] else "unavailable"
+            self._print(f"  {t['name']:<20} {status:<12} risk={t['risk']:<10} caps={', '.join(t['capabilities'])}")
+        self._print("\nUse '/tool <name>' for detail.")
+
+    def _print_tool_detail(self, name: str) -> None:
+        console_ = self._console()
+        if console_ is None:
+            return
+        if not name:
+            self._print("Usage: /tool <name>")
+            return
+        detail = console_.describe_tool(name)
+        if detail is None:
+            self._print(f"No tool named '{name}'.")
+            return
+        for key, value in detail.items():
+            self._print(f"  {key}: {value}")
+
+    def _print_capabilities(self) -> None:
+        console_ = self._console()
+        if console_ is None:
+            return
+        for c in console_.list_capabilities():
+            self._print(f"  {c['id']:<28} risk={c['risk']:<10} permission={c['permission']} "
+                         f"available={','.join(c['available_tools']) or '-'}")
+        self._print("\nUse '/capability <name>' for detail.")
+
+    def _print_capability_detail(self, name: str) -> None:
+        console_ = self._console()
+        if console_ is None:
+            return
+        if not name:
+            self._print("Usage: /capability <name>")
+            return
+        detail = console_.describe_capability(name)
+        if detail is None:
+            self._print(f"No capability named '{name}'.")
+            return
+        for key, value in detail.items():
+            self._print(f"  {key}: {value}")
+
+    async def _run_console_command(self, rest: str, *, by_capability: bool) -> None:
+        console_ = self._console()
+        if console_ is None:
+            return
+        parts = rest.split()
+        label = "/run <capability> <target> [k=v ...]" if by_capability else "/tool-run <tool> <target> [k=v ...]"
+        if len(parts) < 2:
+            self._print(f"Usage: {label}")
+            return
+        name, target, *kv_pairs = parts
+        parameters = {}
+        for pair in kv_pairs:
+            if "=" in pair:
+                key, value = pair.split("=", 1)
+                parameters[key] = value
+
+        if by_capability:
+            preview = console_.preview(name, target, parameters)
+        else:
+            # Tool-specific preview reuses the same ScopeEngine/executor
+            # path; we resolve the tool's own declared capability (first
+            # one) so the preview still reflects real scope/risk/approval.
+            tool_entry = self.controller.assessment.registry.get(name)
+            if tool_entry is None:
+                self._print(f"No tool named '{name}'.")
+                return
+            capability = tool_entry.metadata.capabilities[0] if tool_entry.metadata.capabilities else name
+            preview = console_.preview(capability, target, parameters)
+            preview.candidate_tools = [name]
+
+        for line in preview.render_lines():
+            self._print(f"  {line}")
+
+        if preview.scope_reason != "within scope" and not preview.requires_approval:
+            self._print("[red]Blocked by scope policy — not executable.[/red]")
+            return
+
+        answer = await asyncio.to_thread(input, "Execute? [Approve once/Reject] (y/N) ")
+        if answer.strip().lower() not in ("y", "yes"):
+            self._print("Rejected.")
+            return
+
+        result = await console_.execute(
+            preview.capability, target, parameters,
+            grant_elevated_approval=preview.requires_approval,
+        )
+        if result.ok:
+            self._print(f"[green]✓[/green] {result.detail}")
+        else:
+            self._print(f"[yellow]![/yellow] {result.detail}")
+
+    def _print_attack_surface(self) -> None:
+        if not self._require_assessment():
+            return
+        ws = self.controller.assessment.workspace
+        self._print("target")
+        hosts = ws.list_hosts()
+        services = ws.list_services()
+        for host in hosts:
+            self._print(f"├── {host.address}")
+            for svc in [s for s in services if s.host_id == host.id]:
+                self._print(f"│   ├── {svc.port} {svc.protocol}")
+        endpoints = ws.list_endpoints()
+        if endpoints:
+            self._print("└── web")
+            for ep in endpoints[:50]:
+                import json as _json
+
+                methods = ", ".join(_json.loads(ep.methods_json)) if ep.methods_json else "?"
+                self._print(f"    ├── {methods} {ep.path}")
+        source = ws.load_source()
+        if source is not None:
+            self._print("└── source")
+            for route in getattr(source, "routes", [])[:50]:
+                self._print(f"    ├── {route.method} {route.path} -> {route.handler}")
+
+    def _print_source_summary(self) -> None:
+        if not self._require_assessment():
+            return
+        source = self.controller.assessment.workspace.load_source()
+        if source is None:
+            self._print("No source intelligence indexed yet. The agent indexes it via "
+                         "'index_source_repository', or bind a source root in /scope.")
+            return
+        languages = getattr(source, "languages", [])
+        frameworks = [f.name for f in getattr(source, "frameworks", [])]
+        routes = getattr(source, "routes", [])
+        dependencies = getattr(source, "dependencies", [])
+        self._print(f"Languages:   {', '.join(languages) or '-'}")
+        self._print(f"Frameworks:  {', '.join(frameworks) or '-'}")
+        self._print(f"Routes:      {len(routes)}")
+        self._print(f"Dependencies: {len(dependencies)}")
 
     async def _generate_report(self) -> None:
         if not self._require_assessment():

@@ -95,6 +95,15 @@ class ProductController:
         self.assessment = Assessment.resume(record.assessment_id, self.config, self.project_root)
         self.session_name = session_name
         self.sessions.touch(session_name)
+        interrupted = self.assessment.workspace.mark_interrupted_actions()
+        if interrupted:
+            if self.assessment.workspace.assessment_status() == "running":
+                self.assessment.workspace.set_assessment_status("interrupted")
+            await self.events.emit(
+                EventType.NOTICE,
+                detail=f"{interrupted} action(s) from a previous run did not complete "
+                       "(process was interrupted) — marked 'interrupted', not assumed successful.",
+            )
         await self.events.emit(
             EventType.ASSESSMENT_RESUMED,
             assessment_id=self.assessment.id, session=session_name,
@@ -152,6 +161,7 @@ class ProductController:
 
         orchestrator = self.assessment.build_orchestrator(llm)
         self.state = ControllerState.RUNNING
+        self.assessment.workspace.set_assessment_status("running")
         while True:
             if self._stop_requested:
                 self.assessment.workspace.set_assessment_status("stopped")
