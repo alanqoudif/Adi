@@ -115,6 +115,11 @@ class Assessment:
         registry = ToolRegistry(discover_skills_dir())
         registry.discover()
         runtime = build_runtime(config, workspace_dir=directory / "raw")
+        if isinstance(runtime, DockerKaliRuntime):
+            # Until container discovery completes, host binaries are not candidates.
+            for tool in registry.all():
+                if "source" not in tool.metadata.category:
+                    tool.runtime, tool.available, tool.binary_path = "docker-kali", False, None
         raw_dir = directory / "raw"
         rate_limiter = RateLimiter(scope.rate_limits)
         executor = ToolExecutor(registry, runtime, scope_engine, workspace, raw_dir, rate_limiter=rate_limiter)

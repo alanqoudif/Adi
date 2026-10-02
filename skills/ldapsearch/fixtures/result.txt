@@ -1,0 +1,3 @@
+dn:
+namingContexts: dc=lab,dc=local
+supportedLDAPVersion: 3

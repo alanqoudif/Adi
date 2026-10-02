@@ -19,6 +19,7 @@ def build_argv(target: str, parameters: dict, binary: str) -> list[str]:
         "-t", str(parameters.get("threads", 20)),
         "-s",  # silent: suppress the progress banner from stdout
     ]
+    argv += ['-rate' if 'ffuf' in binary else '--rate-limit', str(parameters.get('rate', 5))]
     if parameters.get("filter_status"):
         argv += ["-fc", str(parameters["filter_status"])]
     return argv

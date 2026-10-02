@@ -1,0 +1,4 @@
+subject=CN = localhost
+issuer=CN = Local Lab
+New, TLSv1.3, Cipher is TLS_AES_256_GCM_SHA384
+Verify return code: 0 (ok)

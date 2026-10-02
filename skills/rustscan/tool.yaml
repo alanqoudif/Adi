@@ -1,0 +1,33 @@
+name: rustscan
+display_name: rustscan
+category:
+- discovery
+description: Reviewed bounded discovery metadata provider
+capabilities:
+- enumerate_services
+- discover_hosts
+risk_level: low
+version_args:
+- --version
+binary_names: []
+requires_network: true
+requires_root: false
+supports_rate_control: true
+approval_requirement: false
+normalized_entities:
+- Host
+- Service
+- Observation
+scope_requirements:
+  target_must_be_authorized: true
+  explicit_auth_testing_permission: false
+output:
+  machine_readable: false
+  preferred_format: text
+execution:
+  binary: rustscan
+  priority: 20
+  timeout_seconds: 30
+input_schema:
+  target: one authorized host
+  parameters: typed reviewed operation only

@@ -1,0 +1,1 @@
+{"shares":{"public":{"type":"Disk"}},"smb_domain_info":{"domain":"LAB"}}

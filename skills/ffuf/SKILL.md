@@ -72,3 +72,43 @@ Re-fetch the discovered path directly.
 
 ## HOW TO STORE RESULTS IN THE TARGET GRAPH
 Same canonical `EndpointRecord` model as every other discovery path.
+
+
+## Skill V2 contract
+Intent and scope remain defined above. Use only the typed adapter; no arbitrary extra argv. Versions use the declared local probe. Unsupported options disable the provider for this assessment. Deterministic observations retain ToolEvidence provenance; scanner indications require Phase 4 validation. Scope rate limits and central concurrency apply. Inspect `adi capability` for available fallbacks.
+
+
+## CAPABILITIES
+The machine-readable contract is authoritative; use adi capability to compare providers.
+
+
+## RISK
+Use risk_level in tool.yaml; scope and approval cannot be overridden by tool metadata.
+
+
+## SCOPE REQUIREMENTS
+All target actions require ScopeEngine; source actions require source_analysis permission.
+
+
+## INTERPRETATION
+Observations and scanner indications require Phase 4 verification before findings.
+
+
+## RATE / LOCKOUT CONSIDERATIONS
+Scope rate and concurrency bounds apply; this tool cannot bypass authentication permission.
+
+
+## SAFE VALIDATION STRATEGY
+Use sanitized fixtures and explicitly scoped local lab targets.
+
+
+## FALLBACKS
+Use only compatible, available reviewed providers; never invent flags through the LLM.
+
+
+## VERSION DIFFERENCES
+Declared local probes preserve unknown versions. Incompatible invocations disable the provider on resume.
+
+
+## NORMALIZED OUTPUT MODEL
+Typed Observation entities with action and ToolEvidence provenance; source scanners retain their Phase 5 evidence contract.

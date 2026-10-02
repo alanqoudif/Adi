@@ -1,0 +1,31 @@
+name: ldapsearch
+display_name: ldapsearch
+category:
+- enterprise
+description: Reviewed bounded enterprise metadata provider
+capabilities:
+- inspect_ldap
+risk_level: low
+version_args:
+- -VV
+binary_names: []
+requires_network: true
+requires_root: false
+supports_rate_control: true
+approval_requirement: false
+normalized_entities:
+- LDAPObservation
+- DirectoryNamingContext
+scope_requirements:
+  target_must_be_authorized: true
+  explicit_auth_testing_permission: false
+output:
+  machine_readable: true
+  preferred_format: ldif
+execution:
+  binary: ldapsearch
+  priority: 10
+  timeout_seconds: 30
+input_schema:
+  target: one authorized host
+  parameters: typed reviewed operation only

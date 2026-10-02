@@ -1,0 +1,13 @@
+# Runtime-aware tools
+
+Host PATH availability is separate from docker-kali availability. Host discovery uses binary resolution, optional interpreter-environment executables, and only declared safe probes. Version failure yields `unknown` rather than hiding an installed binary. Container detection runs fixed `which` and reviewed version probes inside the configured image; it never assumes that a host executable exists in the image. Execution/evidence records the selected location. Source scanners retain host/offline execution.
+
+`adi doctor` reports runtime readiness, grouped reviewed tools, versions and provider setup. Optional missing tools do not fail the tool registry. An absent required runtime can still make doctor fail. `adi tools` shows location, availability, version, risk, trust and capabilities; when the configured Kali image is available it also probes it. `adi tool NAME` shows the contract, scope, parser and reviewed skill. `adi discover-tools` refreshes only known binaries in PATH.
+
+The Kali image uses an explicit package list: Nmap, WhatWeb, ffuf, feroxbuster, Hydra, Medusa, enum4linux-ng, DNS utilities, SSH client, Gitleaks, tcpdump, tshark, OpenSSL, smbclient and ldap-utils. It runs as a non-root user, with dropped capabilities and no-new-privileges. Live packet capture is consequently blocked; authorized existing pcap analysis works without sudo. No full Kali metapackage is installed.
+
+Build locally with `docker build -f docker/Dockerfile.kali -t adi-kali:latest .`. The base is pinned to the official multi-platform image digest verified on October 2, 2026. APT still resolves the explicit package list from the rolling repository; this is a repeatable build recipe, not a claim of byte-identical package rebuilds. Save the built image digest and package lock in a controlled environment before distributing a runtime. This environment had no runnable Kali image/daemon, so container build and container live execution remain unverified. RustScan, Nuclei, Semgrep, Trivy and OSV are not claimed as included image packages; provision reviewed versions separately if needed.
+
+For opt-in host development use `.adi.yaml` with runtime.type=local and runtime.allow_local=true. LocalRuntime receives argv lists, stdin EOF, process-group timeout termination and retains partial stdout. It never interpolates a shell command or asks for a sudo password.
+
+Official baseline reference: [Kali Docker image documentation](https://www.kali.org/docs/containers/official-kalilinux-docker-images/). The image manifest metadata was read directly from Docker Hub; no container build is claimed.

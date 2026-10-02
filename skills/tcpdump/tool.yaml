@@ -1,0 +1,31 @@
+name: tcpdump
+display_name: tcpdump
+category:
+- network
+description: Reviewed bounded network metadata provider
+capabilities:
+- capture_network_metadata
+- inspect_pcap
+risk_level: moderate
+version_args:
+- --version
+binary_names: []
+requires_network: true
+requires_root: true
+supports_rate_control: true
+approval_requirement: false
+normalized_entities:
+- NetworkFlowObservation
+scope_requirements:
+  target_must_be_authorized: true
+  explicit_auth_testing_permission: false
+output:
+  machine_readable: false
+  preferred_format: text
+execution:
+  binary: tcpdump
+  priority: 10
+  timeout_seconds: 30
+input_schema:
+  target: one authorized host
+  parameters: typed reviewed operation only

@@ -1,0 +1,2 @@
+Disk|public|Local test share
+IPC|IPC$|IPC Service

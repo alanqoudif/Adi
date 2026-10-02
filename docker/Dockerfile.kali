@@ -4,15 +4,21 @@
 #
 # NOTE: this image is not built or tested in this environment (no Docker
 # daemon available here) — verify it builds and runs before relying on it.
-FROM kalilinux/kali-rolling
+# Official multi-platform manifest verified 2026-10-02 (Docker Hub).
+FROM kalilinux/kali-rolling@sha256:d1d7e581ed60b0bbf9cb8a4bc853526355978f3b943d3a1d7dc7ce209e4231b6
+
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap \
     whatweb \
     ffuf \
     feroxbuster \
-    nikto \
     hydra \
+    medusa \
+    enum4linux-ng \
+    dnsutils \
+    openssh-client \
     gitleaks \
     tcpdump \
     tshark \

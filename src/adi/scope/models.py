@@ -73,6 +73,15 @@ class Scope(BaseModel):
     test_accounts: list[TestAccount] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
 
+    credential_candidate_sources: dict[str, str] = Field(default_factory=dict)
+    authorized_capture_interfaces: list[str] = Field(default_factory=list)
+    authorized_capture_files: list[str] = Field(default_factory=list)
+    approval_mode: bool = False
+    approved_elevated_actions: list[str] = Field(default_factory=list)
+    max_tool_runs: int = 100
+    max_network_tool_runs: int = 80
+    max_elevated_actions: int = 10
+
     max_actions: int = 150
     max_consecutive_failures: int = 5
 

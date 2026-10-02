@@ -8,7 +8,9 @@ Docker gives us (see docs/safety-model.md)."""
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
+import signal
 import uuid
 
 from adi.runtime.process import ExecutionResult, ExecutionRuntime, utcnow
@@ -26,16 +28,18 @@ class LocalRuntime(ExecutionRuntime):
                 *argv,
                 cwd=cwd,
                 env=env,
+                stdin=asyncio.subprocess.DEVNULL,
+                start_new_session=True,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
+            communication = asyncio.create_task(proc.communicate())
             try:
-                stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+                stdout_b, stderr_b = await asyncio.wait_for(asyncio.shield(communication), timeout=timeout)
                 exit_code = proc.returncode or 0
             except TimeoutError:
-                proc.kill()
-                await proc.wait()
-                stdout_b, stderr_b = b"", b""
+                os.killpg(proc.pid, signal.SIGKILL)
+                stdout_b, stderr_b = await communication
                 exit_code = -1
                 timed_out = True
         except FileNotFoundError as exc:
