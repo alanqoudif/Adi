@@ -42,6 +42,7 @@ class CookieMetadata(BaseModel):
     path: str = "/"
     secure: bool = False
     http_only: bool = False
+    same_site: str = ""
     # the value itself is never stored — only that this cookie exists
 
 

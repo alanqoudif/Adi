@@ -14,8 +14,8 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
+from adi.http.cookies import parse_set_cookie_headers
 from adi.http.models import (
-    CookieMetadata,
     HTTPExchange,
     HTTPMethod,
     HTTPRequest,
@@ -129,10 +129,15 @@ class HTTPClient:
                 hop += 1
 
             # httpx.AsyncClient(cookies=jar) copies `jar` into its own
-            # internal Cookies instance rather than mutating it in place —
-            # without this, Set-Cookie responses would never reach the
-            # session's persistent jar.
-            jar.update(client.cookies)
+            # internal Cookies instance rather than mutating it in place, so
+            # Set-Cookie responses never reach the session's persistent jar
+            # on their own. `Cookies.update()` only ever ADDS cookies, so it
+            # can't express a Max-Age=0/expiry removal (e.g. a logout
+            # response) — replace the jar's contents outright instead so
+            # removals are honored too.
+            jar.jar.clear()
+            for cookie in client.cookies.jar:
+                jar.jar.set_cookie(cookie)
 
         completed_at = _utcnow()
 
@@ -152,10 +157,10 @@ class HTTPClient:
         body_text = safe_body_preview(raw_bytes, content_type, max_len=10**9)  # full text if decodable
         body_hash = hashlib.sha256(raw_bytes).hexdigest()
 
-        cookies_meta = [
-            CookieMetadata(name=c.name, domain=c.domain or "", path=c.path or "/")
-            for c in jar.jar
-        ]
+        # Parsed from the raw header, not the cookie jar — the jar loses
+        # Secure/HttpOnly/SameSite flags, which the cookie-hardening
+        # validator (Phase 4) needs.
+        cookies_meta = parse_set_cookie_headers(response.headers.get_list("set-cookie"))
 
         http_response = HTTPResponse(
             status=response.status_code,

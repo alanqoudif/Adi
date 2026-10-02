@@ -17,7 +17,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from adi.knowledge.db import (
     ActionRecord,
     AssessmentRecord,
+    CriticReviewRecord,
     EndpointRecord,
+    EvidenceRecord,
     FindingRecord,
     HostRecord,
     HttpExchangeRecord,
@@ -26,6 +28,7 @@ from adi.knowledge.db import (
     ParameterRecord,
     ServiceRecord,
     SessionRecord,
+    ValidationActionRecord,
     make_session_factory,
     new_id,
 )
@@ -478,5 +481,107 @@ class Workspace:
             rows = session.execute(
                 select(FindingRecord).where(FindingRecord.assessment_id == self.assessment_id)
             ).scalars().all()
+            session.expunge_all()
+            return list(rows)
+
+    def get_finding(self, finding_id: str) -> FindingRecord | None:
+        with self._session_factory() as session:
+            record = session.get(FindingRecord, finding_id)
+            if record is not None:
+                session.expunge(record)
+            return record
+
+    def update_finding(self, finding_id: str, **fields) -> None:
+        with self._session_factory() as session:
+            record = session.get(FindingRecord, finding_id)
+            if record is None:
+                raise ValueError(f"no finding '{finding_id}'")
+            for key, value in fields.items():
+                setattr(record, key, value)
+            session.commit()
+
+    # -- evidence (Phase 4) -----------------------------------------------------
+
+    def record_evidence(self, **fields) -> str:
+        evidence_id = new_id("ev")
+        with self._session_factory() as session:
+            record = EvidenceRecord(id=evidence_id, assessment_id=self.assessment_id, **fields)
+            session.add(record)
+            session.commit()
+        return evidence_id
+
+    def get_evidence(self, evidence_id: str) -> EvidenceRecord | None:
+        with self._session_factory() as session:
+            record = session.get(EvidenceRecord, evidence_id)
+            if record is not None:
+                session.expunge(record)
+            return record
+
+    def link_evidence_to_finding(self, evidence_id: str, finding_id: str) -> None:
+        with self._session_factory() as session:
+            record = session.get(EvidenceRecord, evidence_id)
+            if record is None:
+                raise ValueError(f"no evidence '{evidence_id}'")
+            linked = json.loads(record.related_finding_ids_json)
+            if finding_id not in linked:
+                linked.append(finding_id)
+            record.related_finding_ids_json = json.dumps(linked)
+            session.commit()
+
+    def list_evidence(self) -> list[EvidenceRecord]:
+        with self._session_factory() as session:
+            rows = session.execute(
+                select(EvidenceRecord).where(EvidenceRecord.assessment_id == self.assessment_id)
+                .order_by(EvidenceRecord.created_at)
+            ).scalars().all()
+            session.expunge_all()
+            return list(rows)
+
+    # -- validation actions (Phase 4) --------------------------------------------
+
+    def record_validation_action(self, **fields) -> str:
+        action_id = new_id("val")
+        with self._session_factory() as session:
+            record = ValidationActionRecord(id=action_id, assessment_id=self.assessment_id, **fields)
+            session.add(record)
+            session.commit()
+        return action_id
+
+    def list_validation_actions(self, hypothesis_id: str | None = None) -> list[ValidationActionRecord]:
+        with self._session_factory() as session:
+            stmt = select(ValidationActionRecord).where(
+                ValidationActionRecord.assessment_id == self.assessment_id
+            )
+            if hypothesis_id is not None:
+                stmt = stmt.where(ValidationActionRecord.hypothesis_id == hypothesis_id)
+            rows = session.execute(stmt.order_by(ValidationActionRecord.created_at)).scalars().all()
+            session.expunge_all()
+            return list(rows)
+
+    # -- critic reviews (Phase 4) -------------------------------------------------
+
+    def record_critic_review(self, **fields) -> str:
+        review_id = new_id("crit")
+        with self._session_factory() as session:
+            record = CriticReviewRecord(id=review_id, assessment_id=self.assessment_id, **fields)
+            session.add(record)
+            session.commit()
+        return review_id
+
+    def get_critic_review(self, review_id: str) -> CriticReviewRecord | None:
+        with self._session_factory() as session:
+            record = session.get(CriticReviewRecord, review_id)
+            if record is not None:
+                session.expunge(record)
+            return record
+
+    def list_critic_reviews(self, hypothesis_id: str | None = None) -> list[CriticReviewRecord]:
+        with self._session_factory() as session:
+            stmt = select(CriticReviewRecord).where(
+                CriticReviewRecord.assessment_id == self.assessment_id
+            )
+            if hypothesis_id is not None:
+                stmt = stmt.where(CriticReviewRecord.hypothesis_id == hypothesis_id)
+            rows = session.execute(stmt.order_by(CriticReviewRecord.created_at)).scalars().all()
             session.expunge_all()
             return list(rows)

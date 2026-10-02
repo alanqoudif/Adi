@@ -54,6 +54,9 @@ class AssessmentRecord(Base):
     findings: Mapped[list[FindingRecord]] = relationship(back_populates="assessment")
     sessions: Mapped[list[SessionRecord]] = relationship(back_populates="assessment")
     http_exchanges: Mapped[list[HttpExchangeRecord]] = relationship(back_populates="assessment")
+    evidence_items: Mapped[list[EvidenceRecord]] = relationship(back_populates="assessment")
+    validation_actions: Mapped[list[ValidationActionRecord]] = relationship(back_populates="assessment")
+    critic_reviews: Mapped[list[CriticReviewRecord]] = relationship(back_populates="assessment")
 
 
 class HostRecord(Base):
@@ -240,22 +243,95 @@ class HypothesisRecord(Base):
     assessment: Mapped[AssessmentRecord] = relationship(back_populates="hypotheses")
 
 
+class EvidenceRecord(Base):
+    """A first-class evidence item (spec Phase 4 section 2). Raw content
+    may live on disk (`raw_reference`); only a bounded, redacted
+    `sanitized_preview` ever reaches planner/critic context."""
+
+    __tablename__ = "evidence"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    assessment_id: Mapped[str] = mapped_column(ForeignKey("assessment.id"))
+    type: Mapped[str] = mapped_column(String)  # EvidenceType value
+    source: Mapped[str] = mapped_column(String, default="")
+    subject: Mapped[str] = mapped_column(String, default="")
+    summary: Mapped[str] = mapped_column(Text, default="")
+    raw_reference: Mapped[str | None] = mapped_column(String, nullable=True)
+    sanitized_preview: Mapped[str] = mapped_column(Text, default="")
+    hash: Mapped[str] = mapped_column(String, default="")
+    related_hypothesis_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    related_finding_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    assessment: Mapped[AssessmentRecord] = relationship(back_populates="evidence_items")
+
+
+class ValidationActionRecord(Base):
+    """An audit-log entry for every validation action executed — distinct
+    from `ActionRecord` (the orchestrator's tool/HTTP action log) so a
+    hypothesis's validation history can be queried on its own (spec
+    section 45)."""
+
+    __tablename__ = "validation_action"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    assessment_id: Mapped[str] = mapped_column(ForeignKey("assessment.id"))
+    hypothesis_id: Mapped[str] = mapped_column(ForeignKey("hypothesis.id"))
+    action_type: Mapped[str] = mapped_column(String)  # ValidationActionType value
+    session_id: Mapped[str] = mapped_column(String, default="")
+    parameters_json: Mapped[str] = mapped_column(Text, default="{}")
+    outcome: Mapped[str] = mapped_column(String, default="")  # ValidationOutcome value
+    detail: Mapped[str] = mapped_column(Text, default="")
+    evidence_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    assessment: Mapped[AssessmentRecord] = relationship(back_populates="validation_actions")
+
+
+class CriticReviewRecord(Base):
+    __tablename__ = "critic_review"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    assessment_id: Mapped[str] = mapped_column(ForeignKey("assessment.id"))
+    hypothesis_id: Mapped[str] = mapped_column(ForeignKey("hypothesis.id"))
+    decision: Mapped[str] = mapped_column(String)  # CriticDecision value
+    concerns_json: Mapped[str] = mapped_column(Text, default="[]")
+    additional_validation_needed_json: Mapped[str] = mapped_column(Text, default="[]")
+    confidence_adjustment: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    assessment: Mapped[AssessmentRecord] = relationship(back_populates="critic_reviews")
+
+
 class FindingRecord(Base):
     __tablename__ = "finding"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     assessment_id: Mapped[str] = mapped_column(ForeignKey("assessment.id"))
+    hypothesis_id: Mapped[str | None] = mapped_column(ForeignKey("hypothesis.id"), nullable=True)
+    critic_review_id: Mapped[str | None] = mapped_column(
+        ForeignKey("critic_review.id"), nullable=True
+    )
     title: Mapped[str] = mapped_column(String)
     category: Mapped[str] = mapped_column(String, default="")
     severity: Mapped[str] = mapped_column(String, default="info")
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
-    status: Mapped[str] = mapped_column(String, default="unverified")
+    status: Mapped[str] = mapped_column(String, default="indicated")
     summary: Mapped[str] = mapped_column(Text, default="")
     impact: Mapped[str] = mapped_column(Text, default="")
     remediation: Mapped[str] = mapped_column(Text, default="")
     evidence_ids_json: Mapped[str] = mapped_column(Text, default="[]")
     affected_assets_json: Mapped[str] = mapped_column(Text, default="[]")
+    affected_endpoints_json: Mapped[str] = mapped_column(Text, default="[]")
+    affected_roles_json: Mapped[str] = mapped_column(Text, default="[]")
+    validation_summary: Mapped[str] = mapped_column(Text, default="")
+    references_json: Mapped[str] = mapped_column(Text, default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
 
     assessment: Mapped[AssessmentRecord] = relationship(back_populates="findings")
 

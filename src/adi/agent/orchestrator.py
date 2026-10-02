@@ -26,11 +26,18 @@ from adi.agent.context_builder import ContextBuilder
 from adi.agent.planner import Planner
 from adi.agent.reasoner import HypothesisEngine, InvalidHypothesisTransitionError
 from adi.agent.scheduler import ActionBudget
+from adi.findings.pipeline import FindingPipeline
 from adi.http.workspace import HTTPWorkspace
 from adi.knowledge.hypotheses import HypothesisStatus
 from adi.knowledge.workspace import Workspace
 from adi.llm.base import LLMError, MalformedResponseError
 from adi.tools.executor import ScopeViolationError, ToolExecutionError, ToolExecutor
+from adi.validation.engine import (
+    HypothesisAlreadyResolvedError,
+    ValidationBudgetExhaustedError,
+    ValidationEngine,
+)
+from adi.validation.models import ValidationAction, ValidationActionType
 
 _TERMINAL_ACTION_TYPES = {ActionType.COMPLETE, ActionType.ASK_USER}
 
@@ -52,6 +59,8 @@ class Orchestrator:
         context_builder: ContextBuilder,
         budget: ActionBudget | None = None,
         http_workspace: HTTPWorkspace | None = None,
+        validation_engine: ValidationEngine | None = None,
+        finding_pipeline: FindingPipeline | None = None,
     ):
         self.workspace = workspace
         self.executor = executor
@@ -60,6 +69,8 @@ class Orchestrator:
         self.hypothesis_engine = HypothesisEngine(workspace)
         self.budget = budget or ActionBudget()
         self.http_workspace = http_workspace
+        self.validation_engine = validation_engine
+        self.finding_pipeline = finding_pipeline
 
     async def run(self, max_iterations: int | None = None) -> list[StepOutcome]:
         outcomes: list[StepOutcome] = []
@@ -119,6 +130,8 @@ class Orchestrator:
             return await self._dispatch_http_request(action)
         if action.action_type in (ActionType.UPDATE_HYPOTHESIS, ActionType.INVESTIGATE_HYPOTHESIS):
             return self._dispatch_hypothesis(action)
+        if action.action_type == ActionType.VERIFY_FINDING:
+            return await self._dispatch_verify_finding(action)
         return self._dispatch_unsupported(action)
 
     async def _dispatch_run_tool(self, action: PlannedAction) -> StepOutcome:
@@ -238,6 +251,68 @@ class Orchestrator:
             scope_reason="internal action", status="completed",
         )
         return StepOutcome(action=action, status="completed", detail=detail)
+
+    async def _dispatch_verify_finding(self, action: PlannedAction) -> StepOutcome:
+        """Phase 4 section 20: the real `verify_finding` action. Two modes,
+        selected by `parameters.mode`:
+
+        - "validate" (default): execute one typed `ValidationAction` via
+          the `ValidationEngine` — e.g. CHECK_OBJECT_AUTHORIZATION.
+        - "finalize": run the `FindingPipeline` (verifier -> critic ->
+          dedup -> severity) to turn a sufficiently-validated hypothesis
+          into a Finding, or reject it.
+        """
+        if self.validation_engine is None or self.finding_pipeline is None:
+            return StepOutcome(action=action, status="failed",
+                                detail="no validation engine configured for this assessment")
+
+        params = action.parameters or {}
+        hypothesis_id = action.related_hypothesis_id or params.get("hypothesis_id")
+        if not hypothesis_id:
+            return StepOutcome(action=action, status="failed",
+                                detail="verify_finding action missing a hypothesis_id")
+
+        mode = params.get("mode", "validate")
+        try:
+            if mode == "finalize":
+                result = await self.finding_pipeline.finalize(
+                    hypothesis_id, category=params.get("category"),
+                    affected_endpoints=params.get("affected_endpoints"),
+                )
+                detail = f"hypothesis -> {result.hypothesis_status.value}"
+                if result.finding_id:
+                    detail += f", finding {result.finding_id}"
+                if result.critic_decision:
+                    detail += f" (critic: {result.critic_decision.value})"
+                self.workspace.record_action(
+                    action_type=action.action_type.value, capability="finalize_finding",
+                    tool="", target=hypothesis_id, parameters_json=json.dumps(params),
+                    reason_summary=action.reason_summary, scope_allowed=True,
+                    scope_reason="internal action", status="completed",
+                )
+                return StepOutcome(action=action, status="completed", detail=detail)
+
+            validation_action = ValidationAction(
+                action_type=ValidationActionType(params["validation_action_type"]),
+                hypothesis_id=hypothesis_id, parameters=params.get("validation_parameters", {}),
+                reason_summary=action.reason_summary,
+            )
+            result = await self.validation_engine.execute(validation_action)
+            self.workspace.record_action(
+                action_type=action.action_type.value, capability=validation_action.action_type.value,
+                tool="", target=params.get("validation_parameters", {}).get("url", ""),
+                parameters_json=json.dumps(params), reason_summary=action.reason_summary,
+                scope_allowed=True, scope_reason="within scope", status="completed",
+            )
+            return StepOutcome(action=action, status="completed",
+                                detail=f"[{result.outcome.value}] {result.detail}")
+        except HypothesisAlreadyResolvedError as exc:
+            return StepOutcome(action=action, status="failed", detail=str(exc))
+        except ValidationBudgetExhaustedError as exc:
+            return StepOutcome(action=action, status="failed", detail=str(exc))
+        except (KeyError, ValueError) as exc:
+            return StepOutcome(action=action, status="failed",
+                                detail=f"malformed verify_finding action: {exc}")
 
     def _dispatch_unsupported(self, action: PlannedAction) -> StepOutcome:
         self.workspace.record_action(

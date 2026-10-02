@@ -1,18 +1,39 @@
 """A minimal, deterministic local web application used to prove Adi can
-autonomously discover a realistic attack surface (spec Phase 3T).
+autonomously discover a realistic attack surface (spec Phase 3T) and, for
+Phase 4, validate real security properties against it.
 
-This is NOT primarily a vulnerability lab — its only purpose is to expose a
-realistic shape (links, a login form, "authenticated" API routes reached via
-an inline JS fetch, robots.txt, sitemap.xml, a cookie, and an out-of-scope
-redirect) for the HTTP/HTML discovery pipeline to find on its own.
+This is NOT a general vulnerability lab — it exposes exactly the handful of
+controlled scenarios Phase 3/4 acceptance tests need:
+
+Phase 3 (discovery): links, a login form, "authenticated" API routes
+reached via an inline JS fetch, robots.txt, sitemap.xml, a cookie, and an
+out-of-scope redirect.
+
+Phase 4 (validation), per spec section 56:
+  A. correct authentication:     GET /api/private           (401 anon)
+  B. broken auth boundary:       GET /api/leaky-profile      (200 regardless)
+  C. correct object authz:       GET /api/orders-safe/<id>   (403 wrong owner)
+  D. broken object authz:        GET /api/orders-broken/<id> (200 any session)
+  E. cookie hardening issue:     POST /api/login cookie lacks HttpOnly/Secure
+  F. permissive CORS:            GET /api/cors-test reflects Origin + credentials
+  G. debug info disclosure:      GET /api/debug-error        (fake stack trace)
 
 Pure standard library — no extra test dependency to install.
 """
 
 from __future__ import annotations
 
+import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+# owner mapping for the object-authorization scenarios (C/D) — user_a owns
+# object 1, user_b owns object 2; "admin" may access either.
+_ORDERS = {
+    "1": {"owner": "user_a", "data": "Order #1: 2x widget, shipped to user_a's address"},
+    "2": {"owner": "user_b", "data": "Order #2: 1x gadget, shipped to user_b's address"},
+}
+_VALID_SESSIONS = {"user_a", "user_b", "admin"}
 
 _HOME_HTML = """<!doctype html><html><head><title>Demo App</title></head>
 <body>
@@ -64,8 +85,81 @@ class DemoAppHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded)
 
+    def _adi_session(self) -> str | None:
+        """The Phase 4 test-session cookie (distinct from Phase 3's
+        `connect.sid` fingerprinting cookie)."""
+        cookie_header = self.headers.get("Cookie", "")
+        match = re.search(r"adi_session=([^;]+)", cookie_header)
+        if match and match.group(1) in _VALID_SESSIONS:
+            return match.group(1)
+        return None
+
     def do_GET(self):
         host = self.headers.get("Host", f"127.0.0.1:{self.server.server_port}")
+        order_match = re.match(r"^/api/orders-(safe|broken)/(\w+)$", self.path)
+
+        if self.path == "/api/private":
+            # A. correct authentication boundary
+            session = self._adi_session()
+            if session is None:
+                self._send(401, '{"error": "unauthorized"}', content_type="application/json")
+            else:
+                self._send(200, f'{{"user": "{session}", "data": "private account info"}}',
+                            content_type="application/json")
+            return
+
+        if self.path == "/api/leaky-profile":
+            # B. BROKEN authentication boundary — returns protected-looking
+            # data regardless of whether any session cookie was sent.
+            self._send(200, '{"profile": "full profile data including private fields"}',
+                        content_type="application/json")
+            return
+
+        if order_match:
+            mode, order_id = order_match.groups()
+            order = _ORDERS.get(order_id)
+            if order is None:
+                self._send(404, '{"error": "not found"}', content_type="application/json")
+                return
+            session = self._adi_session()
+            if session is None:
+                self._send(401, '{"error": "unauthorized"}', content_type="application/json")
+                return
+            if mode == "safe":
+                # C. CORRECT object-level authorization
+                if session == order["owner"] or session == "admin":
+                    self._send(200, f'{{"id": "{order_id}", "data": "{order["data"]}"}}',
+                                content_type="application/json")
+                else:
+                    self._send(403, '{"error": "forbidden"}', content_type="application/json")
+            else:
+                # D. BROKEN object-level authorization — any authenticated
+                # session can read any order, regardless of ownership.
+                self._send(200, f'{{"id": "{order_id}", "data": "{order["data"]}"}}',
+                            content_type="application/json")
+            return
+
+        if self.path == "/api/cors-test":
+            # F. permissive CORS: reflects the Origin AND allows credentials
+            # — a genuinely risky combination for a validator to flag.
+            origin = self.headers.get("Origin", "*")
+            self._send(200, '{"ok": true}', content_type="application/json", extra_headers={
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Credentials": "true",
+            })
+            return
+
+        if self.path == "/api/debug-error":
+            # G. information disclosure via a verbose framework-style error
+            trace = (
+                "Traceback (most recent call last):\n"
+                '  File "/app/src/handlers/orders.py", line 42, in get_order\n'
+                "    return db.query(order_id)\n"
+                "ValueError: invalid literal for int() with base 10: 'abc'\n"
+            )
+            self._send(500, trace, content_type="text/plain")
+            return
+
         if self.path == "/":
             self._send(200, _HOME_HTML, extra_headers={"Set-Cookie": "connect.sid=s%3Afake.sig; Path=/"})
         elif self.path == "/login":
@@ -90,7 +184,25 @@ class DemoAppHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
-        self.rfile.read(length)
+        body = self.rfile.read(length).decode(errors="replace")
+
+        if self.path == "/api/login":
+            match = re.search(r"username=(\w+)", body)
+            username = match.group(1) if match else ""
+            if username not in _VALID_SESSIONS:
+                self._send(401, '{"error": "invalid credentials"}', content_type="application/json")
+                return
+            # E. cookie hardening issue — intentionally missing HttpOnly and
+            # Secure, for the cookie-attribute validator to catch.
+            self._send(200, f'{{"logged_in_as": "{username}"}}', content_type="application/json",
+                       extra_headers={"Set-Cookie": f"adi_session={username}; Path=/"})
+            return
+
+        if self.path == "/api/logout":
+            self._send(200, '{"logged_out": true}', content_type="application/json",
+                       extra_headers={"Set-Cookie": "adi_session=; Path=/; Max-Age=0"})
+            return
+
         if self.path == "/login":
             self.send_response(302)
             self.send_header("Location", "/dashboard")
