@@ -17,8 +17,9 @@ from adi.config.models import AdiConfig
 from adi.product.console import ExpertConsole
 from adi.product.controller import ControllerState, ProductController
 from adi.product.events import Event, EventType
-from adi.product.models import ProviderProfile
+from adi.product.explain import build_evidence_trace, explain_why
 from adi.product.nlu import interpret_scope_command
+from adi.product.onboarding import setup_provider, test_message
 from adi.product.terminal_safety import sanitize_for_terminal
 from adi.reporting.redaction import known_secrets, redact_text
 
@@ -30,6 +31,12 @@ Common commands:
   /status                  show current assessment status
   /scope                   show the active scope (targets/permissions/budgets)
   /provider <name>         switch the active AI provider profile
+  /provider add            connect AI interactively
+  /provider edit <name>    edit provider settings
+  /provider remove <name>  delete profile and credentials
+  /provider test <name>    test provider/model
+  /models                  discover models for active provider
+  /model [id]              show or switch model
   /providers               list configured provider profiles
   /findings                list findings recorded so far
   /hypotheses              list hypotheses
@@ -42,6 +49,10 @@ Common commands:
   /tool-run <tool> <target> [k=v ...]    reviewed specific-tool request (preview + confirm)
   /attack-surface          hierarchical view of hosts/services/endpoints/source
   /source                  source intelligence summary (languages, routes, deps)
+  /trace <finding-id>      evidence trace: finding -> hypothesis -> validation -> evidence
+  /why <id>                explain an action/hypothesis/finding from stored state (no LLM)
+  /source-search <query>   find indexed source matching a term or path ("where is X implemented?")
+  /settings                effective configuration across layers, with origin
   /pause  /continue  /stop control the assessment loop
   /report                  generate markdown + JSON reports
   /teach on|off             toggle teach mode
@@ -75,6 +86,7 @@ class PlainShell:
 
         self.console = Console(no_color=bool(os.environ.get("NO_COLOR")), highlight=False)
         self.output_sink = output_sink
+        self.prompt = self._terminal_prompt
         self.teach = False
         self.expert = False
         self.controller.events.subscribe(self._on_event)
@@ -126,45 +138,56 @@ class PlainShell:
         if self.controller.assessment is not None and self.controller.state == ControllerState.RUNNING:
             await self.controller.stop()
 
-    async def _first_run_wizard(self) -> None:
-        """Concise first-run setup: pick a provider kind, supply a base
-        URL/model/credential, test the connection, and store it. Never
-        downloads a model and never silently defaults to a remote vendor —
-        the operator picks."""
-        self._print(
-            "\n[bold]Welcome to Adi[/bold] — no AI provider is configured yet.\n"
-            "Choose one: anthropic, openai, openrouter, ollama, vllm, lmstudio, custom"
-        )
-        kind = (await asyncio.to_thread(input, "Provider [anthropic]: ")).strip().lower() or "anthropic"
-        if kind not in ("anthropic", "openai", "openrouter", "ollama", "vllm", "lmstudio", "custom"):
-            self._print(f"Unknown provider '{kind}' — skipping setup; configure later with /provider.")
-            return
-        actual_kind = "openai-compatible" if kind == "custom" else kind
-        base_url = ""
-        if kind == "custom":
-            base_url = (await asyncio.to_thread(input, "Base URL: ")).strip()
-        model = (await asyncio.to_thread(input, "Model name (blank for provider default): ")).strip()
-        secret = ""
-        if kind != "ollama":
+    async def _terminal_prompt(self, label: str, secret: bool = False) -> str:
+        if secret:
             import getpass
 
-            secret = await asyncio.to_thread(getpass.getpass, "API key (leave blank if none): ")
+            return await asyncio.to_thread(getpass.getpass, label)
+        answer = await asyncio.to_thread(input, label)
+        if answer.strip() == "/cancel":
+            raise ValueError("Setup cancelled. Run /provider add to retry.")
+        return answer
 
-        from adi.product.models import default_locality
+    async def _first_run_wizard(self) -> None:
+        self._print("No AI provider configured.")
+        try:
+            await setup_provider(self.controller.models, self.prompt, self._print)
+        except (EOFError, KeyboardInterrupt):
+            self._print("Setup skipped. Run /provider add to connect AI.")
 
-        profile = ProviderProfile(
-            name=kind, kind=actual_kind, base_url=base_url or None, model=model,
-            locality=default_locality(actual_kind),
-        )
-        self.controller.models.add_profile(profile, secret=secret or None)
-        result = await self.controller.models.test_connection(profile)
-        if result.ok:
-            self._print(f"[green]Connected.[/green] ({result.latency_ms:.0f}ms) Provider '{kind}' is now active.")
+    async def _provider_command(self, rest: str) -> None:
+        manager = self.controller.models
+        action, _, name = rest.strip().partition(" ")
+        name = name.strip()
+        if action == "add":
+            await setup_provider(manager, self.prompt, self._print)
+        elif action == "choose":
+            self._print("Available profiles: " + ", ".join(manager.store.profiles))
+            name = (await self.prompt("Provider name: ", False)).strip()
+            manager.set_active(name)
+            self._print(f"Active provider: {name}")
+        elif action == "edit":
+            active = manager.active_profile()
+            await setup_provider(manager, self.prompt, self._print, edit=name or (active.name if active else ""))
+        elif action == "remove":
+            manager.remove_profile(name)
+            self._print("Provider and credentials removed.")
+        elif action == "test":
+            profile = manager.require_profile(name) if name else manager.active_profile()
+            if profile is None:
+                self._print("No AI provider configured. Run /provider add.")
+                return
+            self._print(test_message(await manager.test_connection(profile)))
+        elif action:
+            manager.set_active(rest.strip())
+            self._print(f"Switched active provider to '{rest.strip()}'")
         else:
-            self._print(
-                f"[yellow]Could not verify the connection:[/yellow] {result.error}\n"
-                "The profile is saved; fix the settings with /provider, or retry later."
-            )
+            active = manager.active_profile()
+            self._print(f"Active provider: {active.name if active else '(none configured)'}")
+            if active:
+                self._print(f"Provider: {active.kind} | Model: {active.model}")
+            else:
+                self._print("Run /provider add or Ctrl+P → Add AI Provider.")
 
     async def _handle(self, line: str) -> bool:
         if line.startswith("/"):
@@ -221,16 +244,36 @@ class PlainShell:
         elif cmd == "/scope":
             self._print_scope()
         elif cmd == "/providers":
+            if not self.controller.models.list_profiles():
+                self._print("No AI provider configured. Run /provider add.")
             for p in self.controller.models.list_profiles():
                 active = " (active)" if self.controller.models.active_profile() and p.name == self.controller.models.active_profile().name else ""
                 self._print(f"  {p.name}  kind={p.kind}  model={p.model}  locality={p.locality}{active}")
         elif cmd == "/provider":
-            if not rest:
-                active = self.controller.models.active_profile()
-                self._print(f"Active provider: {active.name if active else '(none configured)'}")
+            await self._provider_command(rest)
+        elif cmd == "/models":
+            active = self.controller.models.active_profile()
+            if active is None:
+                self._print("No AI provider configured. Run /provider add.")
             else:
-                self.controller.models.set_active(rest.strip())
-                self._print(f"Switched active provider to '{rest.strip()}'")
+                models = await self.controller.models.list_models(active)
+                for model in models:
+                    self._print(model)
+                if not models:
+                    self._print("Model discovery unavailable. Use /model <model-id> for manual entry.")
+        elif cmd == "/model":
+            if rest.strip() == "choose":
+                active = self.controller.models.active_profile()
+                if active:
+                    models = await self.controller.models.list_models(active)
+                    for model in models:
+                        self._print(model)
+                    selected = await self.prompt("Model ID: ", False)
+                    self.controller.models.set_model(selected)
+            elif rest.strip():
+                self.controller.models.set_model(rest.strip())
+            active = self.controller.models.active_profile()
+            self._print(f"Model: {active.model}" if active else "No AI provider configured. Run /provider add.")
         elif cmd == "/findings":
             self._print_findings()
         elif cmd == "/hypotheses":
@@ -253,6 +296,14 @@ class PlainShell:
             self._print_attack_surface()
         elif cmd == "/source":
             self._print_source_summary()
+        elif cmd == "/trace":
+            self._print_trace(rest.strip())
+        elif cmd == "/why":
+            self._print_why(rest.strip())
+        elif cmd == "/source-search":
+            self._print_source_search(rest.strip())
+        elif cmd == "/settings":
+            self._print_settings()
         elif cmd == "/pause":
             await self.controller.pause()
             self._print("Paused — no new actions will be scheduled.")
@@ -474,6 +525,93 @@ class PlainShell:
         self._print(f"Routes:      {len(routes)}")
         self._print(f"Dependencies: {len(dependencies)}")
 
+    def _print_trace(self, finding_id: str) -> None:
+        if not self._require_assessment():
+            return
+        if not finding_id:
+            self._print("Usage: /trace <finding-id>")
+            return
+        trace = build_evidence_trace(self.controller.assessment.workspace, finding_id)
+        if trace is None:
+            self._print(f"No finding with id '{finding_id}'.")
+            return
+        for line in trace.render_lines():
+            self._print(f"  {line}")
+
+    def _print_source_search(self, query: str) -> None:
+        if not self._require_assessment():
+            return
+        if not query:
+            self._print("Usage: /source-search <query>  (e.g. 'where is this endpoint implemented?' "
+                        "-> /source-search <path-or-term>)")
+            return
+        from adi.source.index import SourceIndex
+        from adi.source.repository import SourceWorkspace
+
+        source_ws = SourceWorkspace(self.controller.assessment.workspace)
+        snapshot = source_ws.load()
+        if snapshot is None:
+            self._print("No source index yet — the agent indexes it via 'index_source_repository', "
+                        "or run it explicitly with '/run index_source_repository <path>'.")
+            return
+        index = SourceIndex(source_ws.require_current())
+        locations = index.search_text(query)
+        if not locations:
+            self._print(f"No matches for '{query}' in the indexed source.")
+            return
+        for loc in locations[:10]:
+            self._print(f"  {loc.display()}")
+            self._print(f"    {index.retrieve_context(loc).strip()[:300]}")
+
+    def _print_why(self, subject_id: str) -> None:
+        if not self._require_assessment():
+            return
+        if not subject_id:
+            self._print("Usage: /why <action-id|hypothesis-id|finding-id>")
+            return
+        self._print(explain_why(self.controller.assessment.workspace, subject_id))
+
+    def _print_settings(self) -> None:
+        """Effective configuration with its origin, across the layers
+        documented in docs/configuration.md. `AdiConfig` itself doesn't
+        track per-field provenance, so origin is inferred from which
+        layer's file exists — this is a best-effort summary, not a
+        guarantee every value traces to the exact line it came from."""
+        core_config_path = self.project_root / ".adi.yaml"
+        core_origin = "project (.adi.yaml)" if core_config_path.exists() else "default"
+        self._print("[bold]AI[/bold]")
+        active = self.controller.models.active_profile()
+        providers_path = self.controller.models.path
+        providers_origin = "project (.adi/product/providers.json)" if providers_path.exists() else "default (none configured)"
+        self._print(f"  active provider: {active.name if active else '(none)'}  [{providers_origin}]")
+        self._print(f"  role assignments: {self.controller.models.store.roles.model_dump()}")
+
+        self._print("\n[bold]Privacy[/bold]")
+        policy = self.controller.models.store.privacy
+        for field_name, value in policy.model_dump().items():
+            self._print(f"  {field_name}: {value}  [{'project' if providers_path.exists() else 'default'}]")
+
+        self._print("\n[bold]Runtime[/bold]")
+        self._print(f"  type: {self.config.runtime.type}  [{core_origin}]")
+        self._print(f"  allow_local: {self.config.runtime.allow_local}  [{core_origin}]")
+
+        self._print("\n[bold]Security[/bold]")
+        if self.controller.assessment is not None:
+            scope = self.controller.assessment.workspace.load_scope()
+            self._print(f"  authentication_testing: {scope.permissions.authentication_testing}  [assessment scope]")
+            self._print(f"  approval_mode: {scope.approval_mode}  [assessment scope]")
+        else:
+            self._print("  (no active assessment)")
+
+        self._print("\n[bold]UI[/bold]")
+        self._print(f"  teach: {self.teach}  [session]")
+        self._print(f"  expert: {self.expert}  [session]")
+
+        self._print("\n[bold]Advanced[/bold]")
+        from adi.product.credentials import keyring_available
+
+        self._print(f"  credential store: {'OS keyring' if keyring_available() else 'file fallback (~/.config/adi)'}  [environment]")
+
     async def _generate_report(self) -> None:
         if not self._require_assessment():
             return
@@ -490,7 +628,7 @@ class PlainShell:
 def _fmt_ts(ts: float) -> str:
     import datetime
 
-    return datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc).strftime("%Y-%m-%d %H:%M")
+    return datetime.datetime.fromtimestamp(ts, tz=datetime.UTC).strftime("%Y-%m-%d %H:%M")
 
 
 def _render_event(event: Event, *, teach: bool, expert: bool) -> str | None:

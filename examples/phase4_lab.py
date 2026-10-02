@@ -56,17 +56,28 @@ def steps(base):
 
 class PlannerFixture:
     """A deterministic provider fixture, explicitly not a real model."""
-    def __init__(self, base):
-        planned = iter(steps(base))
+    def __init__(self, base, prefix_actions=()):
+        planned = iter([*prefix_actions, *steps(base)])
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *args):
                 pass
 
+            def do_GET(self):
+                body = json.dumps({"data": [{"id": "deterministic-phase4-fixture"},
+                                              {"id": "fixture-alternate"}]}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
             def do_POST(self):
                 request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 messages = request["messages"]
-                if '"title": "CriticReview"' in messages[-1]["content"]:
+                if messages == [{"role": "user", "content": "Reply OK"}]:
+                    reply = "OK"
+                elif '"title": "CriticReview"' in messages[-1]["content"]:
                     reply = {"decision": "accept", "concerns": [], "additional_validation_needed": []}
                 else:
                     reply = next(planned)

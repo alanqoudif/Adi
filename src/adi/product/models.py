@@ -26,7 +26,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from adi.llm.base import LLMError, LLMProvider
-from adi.product.credentials import get_secret, set_secret
+from adi.product.credentials import delete_secret, get_secret, set_secret
 
 ProviderKind = Literal[
     "anthropic", "openai", "openrouter", "ollama", "vllm", "lmstudio",
@@ -36,6 +36,7 @@ ProviderKind = Literal[
 Locality = Literal["local", "remote"]
 
 _DEFAULT_BASE_URLS: dict[str, str] = {
+    "anthropic": "https://api.anthropic.com/v1",
     "openai": "https://api.openai.com/v1",
     "openrouter": "https://openrouter.ai/api/v1",
     "ollama": "http://localhost:11434/v1",
@@ -147,10 +148,30 @@ class ModelManager:
         self.save()
 
     def remove_profile(self, name: str) -> None:
+        self.require_profile(name)
+        delete_secret(name)
         self.store.profiles.pop(name, None)
+        for role in type(self.store.roles).model_fields:
+            if getattr(self.store.roles, role) == name:
+                setattr(self.store.roles, role, None)
         self._provider_cache.pop(name, None)
         if self.store.active_profile == name:
             self.store.active_profile = next(iter(self.store.profiles), None)
+        self.save()
+
+    def require_profile(self, name: str) -> ProviderProfile:
+        if name not in self.store.profiles:
+            raise LLMError("Unknown provider profile. Run /providers or adi provider list.")
+        return self.store.profiles[name]
+
+    def set_model(self, model: str) -> None:
+        profile = self.active_profile()
+        if profile is None:
+            raise LLMError("No AI provider configured. Run /provider add or Ctrl+P → Add AI Provider.")
+        if not model.strip():
+            raise LLMError("Model ID is required")
+        profile.model = model.strip()
+        self._provider_cache.pop(profile.name, None)
         self.save()
 
     def list_profiles(self) -> list[ProviderProfile]:
@@ -189,7 +210,7 @@ class ModelManager:
         profile = self.profile_for_role(role)
         if profile is None:
             raise LLMError(
-                "no AI provider configured — run first-run setup or 'adi provider add'"
+                "No AI provider configured. Run /provider add or Ctrl+P → Add AI Provider."
             )
         self._check_privacy(profile, data_category)
         if profile.name not in self._provider_cache:
@@ -209,27 +230,34 @@ class ModelManager:
 
     # -- connection testing / discovery ----------------------------------
 
-    async def test_connection(self, profile: ProviderProfile) -> ConnectionTestResult:
+    async def test_connection(self, profile: ProviderProfile, secret: str | None = None) -> ConnectionTestResult:
         start = time.monotonic()
         try:
-            provider = build_llm_provider(profile)
+            provider = build_llm_provider(profile, secret=secret)
+            import asyncio
+
             from adi.llm.base import LLMMessage
 
-            await provider.complete(
-                [LLMMessage(role="user", content="ping")], max_tokens=8
-            )
+            response = await asyncio.wait_for(provider.complete(
+                [LLMMessage(role="user", content="Reply OK")], max_tokens=16
+            ), timeout=15)
+            if not isinstance(response, str) or not response.strip():
+                raise ValueError("malformed")
             return ConnectionTestResult(
                 ok=True, latency_ms=(time.monotonic() - start) * 1000
             )
         except Exception as exc:  # noqa: BLE001 - connection probe must never raise
-            return ConnectionTestResult(ok=False, error=str(exc))
+            from adi.llm.errors import provider_error
 
-    async def list_models(self, profile: ProviderProfile) -> list[str]:
+            safe = str(exc) if isinstance(exc, LLMError) else provider_error(exc)
+            return ConnectionTestResult(ok=False, error=safe)
+
+    async def list_models(self, profile: ProviderProfile, secret: str | None = None) -> list[str]:
         """Best-effort model discovery via the provider's `/models`
         endpoint (OpenAI-compatible shape, used by Ollama/vLLM/LM Studio/
         OpenRouter/OpenAI). Returns [] rather than raising if unsupported
         or unreachable — callers show that as 'unknown', not an error."""
-        if profile.kind == "anthropic" or profile.kind == "mock":
+        if profile.kind == "mock":
             return []
         base_url = profile.resolved_base_url()
         if not base_url:
@@ -237,21 +265,37 @@ class ModelManager:
         import httpx
 
         headers = {}
-        secret = get_secret(profile.name, profile.credential_ref)
+        secret = secret if secret is not None else get_secret(profile.name, profile.credential_ref)
         if secret:
             headers["Authorization"] = f"Bearer {secret}"
+        if profile.kind == "anthropic":
+            headers = {"x-api-key": secret or "", "anthropic-version": "2023-06-01"}
         url = base_url.rstrip("/") + "/models"
+        from adi.reporting.redaction import redact_text
+
+        models: list[str] = []
+        cursor = None
+        seen_cursors = set()
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                response = await client.get(url, headers=headers)
-                response.raise_for_status()
-                body = response.json()
-        except Exception:  # noqa: BLE001 - best-effort model discovery probe
+                while True:
+                    params = {"after_id": cursor} if cursor else None
+                    response = await client.get(url, headers=headers, params=params)
+                    response.raise_for_status()
+                    body = response.json()
+                    data = body.get("data") if isinstance(body, dict) else None
+                    if not isinstance(data, list):
+                        return []
+                    models.extend(redact_text(item["id"], (secret,) if secret else ())
+                                  for item in data if isinstance(item, dict)
+                                  and isinstance(item.get("id"), str) and item["id"])
+                    cursor = body.get("last_id")
+                    if profile.kind != "anthropic" or not body.get("has_more") or not cursor or cursor in seen_cursors:
+                        break
+                    seen_cursors.add(cursor)
+        except Exception:  # noqa: BLE001 - discovery is optional, manual IDs remain supported
             return []
-        data = body.get("data") if isinstance(body, dict) else None
-        if not isinstance(data, list):
-            return []
-        return [item.get("id", "") for item in data if isinstance(item, dict) and item.get("id")]
+        return list(dict.fromkeys(models))
 
 
 @dataclass
@@ -261,11 +305,11 @@ class ConnectionTestResult:
     error: str | None = None
 
 
-def build_llm_provider(profile: ProviderProfile) -> LLMProvider:
+def build_llm_provider(profile: ProviderProfile, *, secret: str | None = None) -> LLMProvider:
     """Normalize a `ProviderProfile` into an `LLMProvider`. Provider-
     specific behavior stays inside the adapter classes in `adi.llm.*` —
     this function only chooses which adapter and supplies credentials."""
-    secret = get_secret(profile.name, profile.credential_ref)
+    secret = secret if secret is not None else get_secret(profile.name, profile.credential_ref)
 
     if profile.kind == "mock":
         from adi.llm.mock import MockLLM
@@ -275,7 +319,8 @@ def build_llm_provider(profile: ProviderProfile) -> LLMProvider:
     if profile.kind == "anthropic":
         from adi.llm.anthropic import AnthropicProvider
 
-        return AnthropicProvider(api_key=secret or "", model=profile.model or "claude-sonnet-5-5")
+        return AnthropicProvider(api_key=secret or "", model=profile.model,
+                                 base_url=profile.resolved_base_url() or "https://api.anthropic.com/v1")
 
     from adi.llm.openai_compatible import OpenAICompatibleProvider
 

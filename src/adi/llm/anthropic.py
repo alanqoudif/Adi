@@ -1,43 +1,43 @@
-"""Anthropic provider. The `anthropic` package is imported lazily so the
-rest of Adi works without it installed when another provider is configured."""
-
+"""Native Anthropic messages adapter, using the shared HTTP dependency."""
 from __future__ import annotations
 
+import httpx
+
 from adi.llm.base import LLMError, LLMMessage, LLMProvider
-
-try:
-    import anthropic as _anthropic_sdk
-
-    _SDK_AVAILABLE = True
-except ImportError:
-    _SDK_AVAILABLE = False
+from adi.llm.errors import provider_error
+from adi.reporting.redaction import redact_text
 
 
 class AnthropicProvider(LLMProvider):
-    def __init__(self, api_key: str, model: str = "claude-sonnet-5-5"):
-        if not _SDK_AVAILABLE:
-            raise LLMError(
-                "the 'anthropic' package is not installed (pip install anthropic)"
-            )
+    def __init__(self, api_key: str, model: str = '', base_url: str = 'https://api.anthropic.com/v1'):
         if not api_key:
-            raise LLMError("no API key provided for the Anthropic provider")
+            raise LLMError('API key is required for Anthropic')
         self.model = model
-        self._client = _anthropic_sdk.AsyncAnthropic(api_key=api_key)
+        self.api_key = api_key
+        self.base_url = base_url.rstrip('/')
 
     async def complete(self, messages: list[LLMMessage], *, max_tokens: int = 1024) -> str:
-        system = "\n".join(m.content for m in messages if m.role == "system") or None
-        turns = [
-            {"role": m.role, "content": m.content} for m in messages if m.role != "system"
-        ]
+        payload = {
+            'model': self.model, 'max_tokens': max_tokens,
+            'messages': [{'role': m.role, 'content': m.content} for m in messages if m.role != 'system'],
+        }
+        system = '\n'.join(m.content for m in messages if m.role == 'system')
+        if system:
+            payload['system'] = system
         try:
-            response = await self._client.messages.create(
-                model=self.model,
-                system=system,
-                messages=turns,
-                max_tokens=max_tokens,
-            )
-        except Exception as exc:  # SDK-specific errors collapsed to LLMError
-            raise LLMError(f"Anthropic API call failed: {exc}") from exc
-        return "".join(
-            block.text for block in response.content if getattr(block, "type", None) == "text"
-        )
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.post(
+                    self.base_url + '/messages', json=payload,
+                    headers={'x-api-key': self.api_key, 'anthropic-version': '2023-06-01'},
+                )
+                response.raise_for_status()
+                body = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise LLMError(provider_error(exc)) from None
+        try:
+            content = ''.join(b['text'] for b in body['content'] if b.get('type') == 'text')
+            if not content.strip():
+                raise ValueError('empty response')
+            return redact_text(content, (self.api_key,))
+        except (KeyError, TypeError, ValueError):
+            raise LLMError('Provider returned malformed response') from None

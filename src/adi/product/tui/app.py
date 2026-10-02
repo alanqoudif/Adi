@@ -7,16 +7,20 @@ same real Core integration (Assessment/Orchestrator/ScopeEngine/...).
 
 from __future__ import annotations
 
+import asyncio
+from functools import partial
 from pathlib import Path
 from typing import ClassVar
 
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.command import Hit, Hits, Provider
 from textual.containers import Horizontal
 from textual.widgets import Footer, Header, Input, RichLog, Static
 
 from adi.config.models import AdiConfig
+from adi.product.onboarding import MENU
 from adi.product.plain_shell import PlainShell
 
 
@@ -50,13 +54,60 @@ class ScopePanel(Static):
             for sev, count in by_sev.items():
                 lines.append(f"{sev:<10} {count}")
             lines.append("")
-            lines.append("[bold]MODEL[/bold]")
-            active = shell.controller.models.active_profile()
-            lines.append(active.name if active else "(none configured)")
-            lines.append("")
             lines.append("[bold]STATE[/bold]")
             lines.append(shell.controller.state)
-        self.update("\n".join(lines))
+        lines.extend(["", "[bold]MODEL[/bold]"])
+        active = shell.controller.models.active_profile()
+        if active:
+            lines.extend([active.kind, active.name, active.model])
+        else:
+            lines.extend(["No AI configured", "Ctrl+P → Add AI Provider"])
+        self.update(Text.from_markup("\n".join(lines)))
+
+
+class AdiCommands(Provider):
+    """Populates Ctrl+P with Adi-specific actions, each just forwarding a
+    line into `PlainShell._handle` — identical to typing it, so there is
+    exactly one place commands are interpreted."""
+
+    _ACTIONS: ClassVar[list[tuple[str, str, str]]] = [
+        ("New assessment", "/new ", "Start a new assessment against a target"),
+        ("Resume session", "/resume ", "Resume a named session"),
+        ("List sessions", "/sessions", "Show known sessions"),
+        ("Add AI Provider", "/provider add", "Connect a remote or local AI provider"),
+        ("Switch AI Provider", "/provider choose", "Select a profile from /providers"),
+        ("Test Active Provider", "/provider test", "Send a minimal connection test"),
+        ("Choose Model", "/model choose", "Discover model IDs; /model <id> selects one"),
+        ("Provider Settings", "/provider edit", "Edit an existing provider profile"),
+        ("Switch provider", "/provider ", "Switch the active AI provider profile"),
+        ("List providers", "/providers", "List configured provider profiles"),
+        ("Findings", "/findings", "List findings recorded so far"),
+        ("Hypotheses", "/hypotheses", "List hypotheses"),
+        ("Evidence", "/evidence", "List evidence"),
+        ("Attack surface", "/attack-surface", "Hierarchical hosts/services/endpoints/source view"),
+        ("Source summary", "/source", "Source intelligence summary"),
+        ("Scope", "/scope", "Show the active authorization scope"),
+        ("Tools browser", "/tools", "Browse discovered tool skills"),
+        ("Capabilities browser", "/capabilities", "Browse capabilities and fallback order"),
+        ("Generate report", "/report", "Generate markdown + JSON reports"),
+        ("Pause assessment", "/pause", "Stop scheduling new actions"),
+        ("Continue assessment", "/continue", "Resume scheduling"),
+        ("Stop assessment", "/stop", "End the assessment safely"),
+        ("Help", "/help", "Show the command reference"),
+    ]
+
+    async def search(self, query: str) -> Hits:
+        matcher = self.matcher(query)
+        app = self.app
+        assert isinstance(app, AdiApp)
+        for title, line, help_text in self._ACTIONS:
+            score = matcher.match(title)
+            if score > 0:
+                yield Hit(
+                    score, matcher.highlight(title),
+                    partial(app.run_command_line, line),
+                    help=help_text,
+                )
 
 
 class AdiApp(App):
@@ -81,11 +132,14 @@ class AdiApp(App):
         Binding("ctrl+p", "command_palette", "Commands"),
     ]
 
-    COMMANDS = App.COMMANDS
+    COMMANDS: ClassVar[set] = App.COMMANDS | {AdiCommands}
 
     def __init__(self, config: AdiConfig, project_root: Path | None = None):
         super().__init__()
         self.shell = PlainShell(config, project_root, output_sink=self._write_line)
+        self.shell.prompt = self._prompt
+        self._answer: asyncio.Future[str] | None = None
+        self._busy = False
         self._log: RichLog | None = None
         self._side: ScopePanel | None = None
 
@@ -108,7 +162,42 @@ class AdiApp(App):
                 f"Recent session '{candidate.name}' ({candidate.target}) — "
                 f"/resume {candidate.name} to continue it."
             )
+        if self.shell.controller.models.active_profile() is None:
+            self._write_line("No AI provider configured.\n" + MENU)
+            self._write_line("Run /provider add or Ctrl+P → Add AI Provider. You may continue without AI.")
         self._refresh_side()
+        self.query_one("#input", Input).focus()
+
+    async def _prompt(self, label: str, secret: bool = False) -> str:
+        widget = self.query_one("#input", Input)
+        self._write_line(label)
+        widget.password = secret
+        widget.placeholder = label + " (/cancel to stop)"
+        widget.focus()
+        self._answer = asyncio.get_running_loop().create_future()
+        try:
+            answer = await self._answer
+            if answer == "/cancel":
+                raise ValueError("Setup cancelled. Run /provider add to retry.")
+            return answer
+        finally:
+            self._answer = None
+            widget.value = ""
+            widget.password = False
+            widget.placeholder = "Type a message or /help ..."
+
+    async def _execute(self, line: str) -> None:
+        if self._busy:
+            self._write_line("Finish the current setup or enter /cancel first.")
+            return
+        self._busy = True
+        try:
+            await self.shell._handle(line)
+        except Exception as exc:  # noqa: BLE001 - user-facing command boundary
+            self.shell._print(f"Error: {exc}")
+        finally:
+            self._busy = False
+            self._refresh_side()
 
     def _write_line(self, text: str) -> None:
         if self._log is not None:
@@ -122,17 +211,32 @@ class AdiApp(App):
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         line = event.value.strip()
         event.input.value = ""
+        if self._answer is not None and not self._answer.done():
+            self._answer.set_result(line)
+            return
         if not line:
             return
         self._write_line(f"[dim]> {line}[/dim]")
         if line in ("/exit", "/quit"):
+            if self.shell.controller.assessment is not None:
+                await self.shell.controller.stop()
             self.exit()
             return
-        try:
-            await self.shell._handle(line)
-        except Exception as exc:  # noqa: BLE001 - the TUI must never crash on a bad command
-            self._write_line(f"[red]Error:[/red] {exc}")
-        self._refresh_side()
+        self.run_worker(self._execute(line))
+
+    def run_command_line(self, line: str) -> None:
+        """Invoked by `AdiCommands` hits from the Ctrl+P palette. A command
+        that needs an argument (trailing space, e.g. '/new ') is placed in
+        the input box for the operator to complete rather than run blind;
+        a complete command runs immediately through the same `_handle()`
+        every other entry point uses."""
+        input_widget = self.query_one("#input", Input)
+        if line.endswith(" "):
+            input_widget.value = line
+            input_widget.focus()
+            return
+        self._write_line(f"[dim]> {line}[/dim]")
+        self.run_worker(self._execute(line))
 
     def action_show_findings(self) -> None:
         self.run_worker(self.shell._handle("/findings"))
