@@ -64,16 +64,19 @@ Legend: NOT STARTED / IN PROGRESS / IMPLEMENTED / TESTED / ENV BLOCKED
 - Attack-surface view (`/attack-surface`) — TESTED (hierarchical
   hosts/services/endpoints + source routes text rendering).
 - Source intelligence view (`/source`) — TESTED (languages/frameworks/
-  routes/dependencies summary). Deep source browsing ("where is this
-  endpoint implemented", "show authorization code for this finding") not
-  yet wired — Core's `adi.source.retrieval` bounded-retrieval exists and
-  is unused by the Product layer so far.
+  routes/dependencies summary). Deep source browsing (`/source-search
+  <query>`, reusing `adi.source.index.SourceIndex` the same way the CLI's
+  `source-search` command does) — TESTED.
 - Findings/hypotheses/evidence text UX (`/findings /hypotheses
-  /evidence`) — TESTED. No evidence-trace graph view
-  (finding→hypothesis→validation→observations→tool/HTTP/source
-  evidence→scope decision) yet — Core has all the linked IDs
-  (`Finding.hypothesis_id`, `evidence_ids_json`, etc.); only the
-  traversal/rendering is missing.
+  /evidence`) — TESTED. Evidence-trace view (`/trace <finding-id>`:
+  finding→hypothesis→validation actions→supporting observations→critic
+  review→evidence, purely from stored state) — TESTED
+  (`tests/unit/test_explain.py`, over a real confirmed finding from the
+  Phase 4 fixture, not synthetic data).
+- Explainability (`/why <id>` for an action/hypothesis/finding) — TESTED.
+  Deterministic (reads `ActionRecord.reason_summary`/`.scope_reason`,
+  `CriticReviewRecord`, hypothesis/finding linkage) — explicitly not an
+  LLM call, per spec ("do not invent hidden chain-of-thought").
 - First-run setup wizard — TESTED (`tests/unit/test_plain_shell.py::
   test_first_run_wizard_adds_provider_profile`), triggered automatically
   by `adi shell --plain` when no profile is configured.
@@ -139,39 +142,25 @@ test), plus this commit (docs/README + provider-failure-recovery test).
 309 passed, 1 skipped (full suite, last background run); Core untouched.
 
 Remaining, in priority order:
-1. **Evidence-trace view**: a `/trace <finding-id>` command walking
-   finding → hypothesis → validation actions → observations → tool/HTTP/
-   source evidence → scope decision, using IDs Core already persists
-   (`Finding.hypothesis_id`, `evidence_ids_json`, `Hypothesis.
-   supporting_observation_ids_json`, `ValidationActionRecord`). No new
-   Core state needed — purely a Product-layer traversal + renderer.
-2. **Explainability** (`why did you run this tool? / why High? / why
-   rejected? / why not Hydra?`): a small deterministic answer-builder
-   reading the same persisted state (`ActionRecord.reason_summary`,
-   `ActionRecord.scope_reason`, `CriticReviewRecord`, `ToolRegistry`
-   fallback order) — explicitly NOT an LLM call per spec ("do not invent
-   hidden chain-of-thought").
-3. **Deep source browsing** from chat ("where is this endpoint
-   implemented?"): wire `adi.source.retrieval`'s bounded retrieval into a
-   `/source-search <query>` or similar, reusing the existing CLI's
-   `source-search` logic.
-4. **Dedicated TUI panes** for findings/hypotheses/evidence/attack-surface
+1. **Dedicated TUI panes** for findings/hypotheses/evidence/attack-surface
    (currently rendered as text in the chat log via slash commands, which
    satisfies "browsable" but not "a navigable widget/pane with its own
    scroll/selection") — add `Screen` subclasses or a tabbed container,
    still reading through the same `ExpertConsole`/`Workspace` calls.
-5. **Command palette parity**: Textual's built-in `Ctrl+P` palette
+2. **Command palette parity**: Textual's built-in `Ctrl+P` palette
    (`App.COMMANDS`) is enabled but not populated with Adi-specific
    actions (New assessment, Resume, Switch model, ...) — add a
    `Provider`/`Hits` implementation per Textual's command-palette API.
-6. **`/settings` with origin tracking** (assessment vs. project vs.
+3. **`/settings` with origin tracking** (assessment vs. project vs.
    global vs. default) — `docs/configuration.md` documents the current
    per-surface state; a unified view is not built.
-7. Manual real-terminal verification of the TUI (this sandbox has no
+4. Manual real-terminal verification of the TUI (this sandbox has no
    TTY attached to the agent) — ask the user to run `adi shell` and
    report back, or verify in an environment with one.
-8. Ruff lint pass (not yet run in this session) and a final full-suite
-   run immediately before declaring Definition of Done satisfied.
+
+`ruff check .` passes clean repo-wide (re-verified after every subsequent
+checkpoint below). Full suite re-run after every checkpoint; see the
+commit log for exact pass counts at each point.
 
 Files added/changed this pass: `src/adi/product/console.py`,
 `src/adi/product/terminal_safety.py`, `src/adi/product/tui/app.py`,

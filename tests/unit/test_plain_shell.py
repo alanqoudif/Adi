@@ -164,3 +164,14 @@ async def test_trace_and_why_commands_dispatch(tmp_path):
     await shell._handle("/trace nonexistent-finding")
     await shell._handle("/why")
     await shell._handle("/why nonexistent-id")
+
+
+@pytest.mark.asyncio
+async def test_source_search_command_without_index(tmp_path):
+    config = AdiConfig(runtime=RuntimeConfig(type="mock"))
+    shell = PlainShell(config, project_root=tmp_path)
+    shell.controller.models.add_profile(ProviderProfile(name="m", kind="mock", locality="local"))
+    await shell._handle("/new 127.0.0.1")
+
+    await shell._handle("/source-search")
+    await shell._handle("/source-search some_query")

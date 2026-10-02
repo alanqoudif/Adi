@@ -45,6 +45,7 @@ Common commands:
   /source                  source intelligence summary (languages, routes, deps)
   /trace <finding-id>      evidence trace: finding -> hypothesis -> validation -> evidence
   /why <id>                explain an action/hypothesis/finding from stored state (no LLM)
+  /source-search <query>   find indexed source matching a term or path ("where is X implemented?")
   /pause  /continue  /stop control the assessment loop
   /report                  generate markdown + JSON reports
   /teach on|off             toggle teach mode
@@ -260,6 +261,8 @@ class PlainShell:
             self._print_trace(rest.strip())
         elif cmd == "/why":
             self._print_why(rest.strip())
+        elif cmd == "/source-search":
+            self._print_source_search(rest.strip())
         elif cmd == "/pause":
             await self.controller.pause()
             self._print("Paused — no new actions will be scheduled.")
@@ -493,6 +496,31 @@ class PlainShell:
             return
         for line in trace.render_lines():
             self._print(f"  {line}")
+
+    def _print_source_search(self, query: str) -> None:
+        if not self._require_assessment():
+            return
+        if not query:
+            self._print("Usage: /source-search <query>  (e.g. 'where is this endpoint implemented?' "
+                        "-> /source-search <path-or-term>)")
+            return
+        from adi.source.index import SourceIndex
+        from adi.source.repository import SourceWorkspace
+
+        source_ws = SourceWorkspace(self.controller.assessment.workspace)
+        snapshot = source_ws.load()
+        if snapshot is None:
+            self._print("No source index yet — the agent indexes it via 'index_source_repository', "
+                        "or run it explicitly with '/run index_source_repository <path>'.")
+            return
+        index = SourceIndex(source_ws.require_current())
+        locations = index.search_text(query)
+        if not locations:
+            self._print(f"No matches for '{query}' in the indexed source.")
+            return
+        for loc in locations[:10]:
+            self._print(f"  {loc.display()}")
+            self._print(f"    {index.retrieve_context(loc).strip()[:300]}")
 
     def _print_why(self, subject_id: str) -> None:
         if not self._require_assessment():
