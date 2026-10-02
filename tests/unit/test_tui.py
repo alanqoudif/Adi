@@ -58,3 +58,33 @@ async def test_tui_exit_command_quits(tmp_path):
         await pilot.press(*"/exit")
         await pilot.press("enter")
         await pilot.pause()
+
+
+@pytest.mark.asyncio
+async def test_command_palette_lists_adi_actions(tmp_path):
+    from adi.product.tui.app import AdiCommands
+
+    app = AdiApp(AdiConfig(runtime=RuntimeConfig(type="mock")), project_root=tmp_path)
+    async with app.run_test() as pilot:
+        provider = AdiCommands(app.screen)
+        hits = [hit async for hit in provider.search("findings")]
+        assert len(hits) >= 1
+        await pilot.pause()
+
+
+@pytest.mark.asyncio
+async def test_command_palette_hit_runs_immediate_command(tmp_path):
+    app = AdiApp(AdiConfig(runtime=RuntimeConfig(type="mock")), project_root=tmp_path)
+    async with app.run_test() as pilot:
+        app.run_command_line("/help")
+        await pilot.pause()
+
+
+@pytest.mark.asyncio
+async def test_command_palette_hit_with_argument_fills_input(tmp_path):
+    app = AdiApp(AdiConfig(runtime=RuntimeConfig(type="mock")), project_root=tmp_path)
+    async with app.run_test() as pilot:
+        app.run_command_line("/new ")
+        await pilot.pause()
+        input_widget = app.query_one("#input")
+        assert input_widget.value == "/new "

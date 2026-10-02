@@ -7,10 +7,9 @@ same real Core integration (Assessment/Orchestrator/ScopeEngine/...).
 
 from __future__ import annotations
 
+from functools import partial
 from pathlib import Path
 from typing import ClassVar
-
-from functools import partial
 
 from rich.text import Text
 from textual.app import App, ComposeResult
@@ -62,6 +61,46 @@ class ScopePanel(Static):
         self.update("\n".join(lines))
 
 
+class AdiCommands(Provider):
+    """Populates Ctrl+P with Adi-specific actions, each just forwarding a
+    line into `PlainShell._handle` — identical to typing it, so there is
+    exactly one place commands are interpreted."""
+
+    _ACTIONS: ClassVar[list[tuple[str, str, str]]] = [
+        ("New assessment", "/new ", "Start a new assessment against a target"),
+        ("Resume session", "/resume ", "Resume a named session"),
+        ("List sessions", "/sessions", "Show known sessions"),
+        ("Switch provider", "/provider ", "Switch the active AI provider profile"),
+        ("List providers", "/providers", "List configured provider profiles"),
+        ("Findings", "/findings", "List findings recorded so far"),
+        ("Hypotheses", "/hypotheses", "List hypotheses"),
+        ("Evidence", "/evidence", "List evidence"),
+        ("Attack surface", "/attack-surface", "Hierarchical hosts/services/endpoints/source view"),
+        ("Source summary", "/source", "Source intelligence summary"),
+        ("Scope", "/scope", "Show the active authorization scope"),
+        ("Tools browser", "/tools", "Browse discovered tool skills"),
+        ("Capabilities browser", "/capabilities", "Browse capabilities and fallback order"),
+        ("Generate report", "/report", "Generate markdown + JSON reports"),
+        ("Pause assessment", "/pause", "Stop scheduling new actions"),
+        ("Continue assessment", "/continue", "Resume scheduling"),
+        ("Stop assessment", "/stop", "End the assessment safely"),
+        ("Help", "/help", "Show the command reference"),
+    ]
+
+    async def search(self, query: str) -> Hits:
+        matcher = self.matcher(query)
+        app = self.app
+        assert isinstance(app, AdiApp)
+        for title, line, help_text in self._ACTIONS:
+            score = matcher.match(title)
+            if score > 0:
+                yield Hit(
+                    score, matcher.highlight(title),
+                    partial(app.run_command_line, line),
+                    help=help_text,
+                )
+
+
 class AdiApp(App):
     """Primary Product Shell screen. Keyboard-first, works at small
     terminal widths (Textual reflows automatically), honors NO_COLOR via
@@ -84,7 +123,7 @@ class AdiApp(App):
         Binding("ctrl+p", "command_palette", "Commands"),
     ]
 
-    COMMANDS = App.COMMANDS
+    COMMANDS: ClassVar[set] = App.COMMANDS | {AdiCommands}
 
     def __init__(self, config: AdiConfig, project_root: Path | None = None):
         super().__init__()
@@ -136,6 +175,20 @@ class AdiApp(App):
         except Exception as exc:  # noqa: BLE001 - the TUI must never crash on a bad command
             self._write_line(f"[red]Error:[/red] {exc}")
         self._refresh_side()
+
+    def run_command_line(self, line: str) -> None:
+        """Invoked by `AdiCommands` hits from the Ctrl+P palette. A command
+        that needs an argument (trailing space, e.g. '/new ') is placed in
+        the input box for the operator to complete rather than run blind;
+        a complete command runs immediately through the same `_handle()`
+        every other entry point uses."""
+        input_widget = self.query_one("#input", Input)
+        if line.endswith(" "):
+            input_widget.value = line
+            input_widget.focus()
+            return
+        self._write_line(f"[dim]> {line}[/dim]")
+        self.run_worker(self.shell._handle(line))
 
     def action_show_findings(self) -> None:
         self.run_worker(self.shell._handle("/findings"))
